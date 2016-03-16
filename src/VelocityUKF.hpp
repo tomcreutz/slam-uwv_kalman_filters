@@ -35,6 +35,7 @@ protected:
 protected:
     std::map<std::string, pose_estimation::Measurement> latest_measurements;
     boost::shared_ptr<underwaterVehicle::DynamicModel> motion_model;
+    boost::shared_ptr<underwaterVehicle::DynamicModel> prediction_model;
 };
 
 }

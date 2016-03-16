@@ -11,10 +11,36 @@ const std::string VelocityUKF::angular_velocity_measurement = "angular_velocity"
  */
 template <typename VelocityState>
 VelocityState
-processModel(const VelocityState &state, const Eigen::Vector3d& acc, double delta_time)
+processAcc(const VelocityState &state, const Eigen::Vector3d& acc, double delta_time)
 {
     VelocityState new_state(state);
     new_state.boxplus(acc, delta_time);
+    return new_state;
+}
+
+template <typename VelocityState>
+VelocityState
+processMotionModel(const VelocityState &state, underwaterVehicle::DynamicModel& motion_model,
+                   const Eigen::Quaterniond& orientation, const base::Vector3d& angular_velocity,
+                   const base::samples::Joints& joints, double delta_time)
+{
+    // reset current state
+    motion_model.setPosition(base::Vector3d::Zero());
+    motion_model.setOrientation(orientation);
+    motion_model.setLinearVelocity(state.velocity);
+    motion_model.setAngularVelocity(angular_velocity);
+    motion_model.setSamplingTime(delta_time);
+
+    // apply joint commands
+    if (!motion_model.sendRPMCommands(joints))
+        throw std::runtime_error("Failed to apply thruster commands in pretiction step!");
+
+    // apply velocity delta
+    base::Vector3d linear_velocity;
+    motion_model.getLinearVelocity(linear_velocity);
+    Eigen::Vector3d velocity_delta = linear_velocity - state.velocity;
+    VelocityState new_state(state);
+    new_state.boxplus(velocity_delta);
     return new_state;
 }
 
@@ -30,6 +56,8 @@ void VelocityUKF::setupMotionModel(const underwaterVehicle::Parameters& paramete
 {
     motion_model.reset(new underwaterVehicle::DynamicModel(parameters.ctrl_order, parameters.samplingtime, parameters.sim_per_cycle));
     motion_model->initParameters(parameters);
+    prediction_model.reset(new underwaterVehicle::DynamicModel(parameters.ctrl_order, parameters.samplingtime, parameters.sim_per_cycle));
+    prediction_model->initParameters(parameters);
     FilterState current_state;
     if(getCurrentState(current_state))
         motion_model->setLinearVelocity(current_state.mu.block(0,0,3,1));
@@ -38,14 +66,14 @@ void VelocityUKF::setupMotionModel(const underwaterVehicle::Parameters& paramete
 void VelocityUKF::predictionStep(const double delta)
 {
     MTK_UKF::cov process_noise = process_noise_cov;
-    Eigen::Vector3d acc = Eigen::Vector3d::Zero();
-
-    // TODO use velocity of the model instead of accelerations
 
     // use motion model to determine the current acceleration
     std::map<std::string, pose_estimation::Measurement>::const_iterator thruster_command = latest_measurements.find(thruster_rpm_measurement);
     if(thruster_command != latest_measurements.end())
     {
+        if (motion_model.get() == NULL || prediction_model.get() == NULL)
+            throw std::runtime_error("Motion model is not initialized!");
+
         base::samples::Joints joints;
         joints.time = thruster_command->second.time;
         joints.elements.resize(thruster_command->second.mu.rows());
@@ -53,26 +81,25 @@ void VelocityUKF::predictionStep(const double delta)
         {
             joints.elements[i].speed = (float)thruster_command->second.mu(i);
         }
+
         // apply motion commands
-        Eigen::Vector3d acc_pre = motion_model->getAcceleration();
+        base::Vector3d angular_velocity;
+        motion_model->getAngularVelocity(angular_velocity);
+        ukf->predict(boost::bind(processMotionModel<WState>, _1, *prediction_model, motion_model->getOrientation_in_Quat(),
+                                 angular_velocity, joints, delta), MTK_UKF::cov(delta * process_noise));
+
+        // this motion model is updated to have a guess about the current orientation
         motion_model->setSamplingTime(delta);
-        if(motion_model->sendRPMCommands(joints))
+        if (!motion_model->sendRPMCommands(joints))
         {
-            Eigen::Vector3d acc_post = motion_model->getAcceleration();
-            acc = 0.5 * (acc_pre + acc_post);
-            if(base::isnotnan(acc))
-            {
-                ukf->predict(boost::bind(processModel<WState>, _1, acc, delta), MTK_UKF::cov(delta * process_noise));
-                return;
-            }
-            else
-                LOG_ERROR_S << "Model predicted acceleration contains NaN values!";
-        }
-        else
             LOG_ERROR_S << "Failed to apply thruster commands to motion model!";
+        }
+
+        return;
     }
 
     // get acceleration from measurement
+    Eigen::Vector3d acc = Eigen::Vector3d::Zero();
     std::map<std::string, pose_estimation::Measurement>::const_iterator it = latest_measurements.find(acceleration_measurement);
     if(it != latest_measurements.end())
     {
@@ -80,7 +107,7 @@ void VelocityUKF::predictionStep(const double delta)
         process_noise= it->second.cov;
     }
 
-    ukf->predict(boost::bind(processModel<WState>, _1, acc, delta), MTK_UKF::cov(delta * process_noise));
+    ukf->predict(boost::bind(processAcc<WState>, _1, acc, delta), MTK_UKF::cov(delta * process_noise));
 }
 
 bool VelocityUKF::getCurrentState(FilterState& current_state)
