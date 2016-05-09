@@ -85,7 +85,9 @@ void VelocityUKF::predictionStep(const double delta)
         // apply motion commands
         base::Vector3d angular_velocity;
         motion_model->getAngularVelocity(angular_velocity);
-        ukf->predict(boost::bind(processMotionModel<WState>, _1, *prediction_model, motion_model->getOrientation_in_Quat(),
+        base::Quaterniond orientation;
+        motion_model->getQuatOrienration(orientation);
+        ukf->predict(boost::bind(processMotionModel<WState>, _1, *prediction_model, orientation,
                                  angular_velocity, joints, delta), MTK_UKF::cov(delta * process_noise));
 
         // this motion model is updated to have a guess about the current orientation
