@@ -52,15 +52,18 @@ VelocityUKF::VelocityUKF(const AbstractFilter::FilterState& initial_state)
     MTK::setDiagonal(process_noise_cov, &WState::velocity, 0.0001);
 }
 
-void VelocityUKF::setupMotionModel(const underwaterVehicle::Parameters& parameters)
+bool VelocityUKF::setupMotionModel(const underwaterVehicle::Parameters& parameters)
 {
     motion_model.reset(new underwaterVehicle::DynamicModel(parameters.ctrl_order, parameters.samplingtime, parameters.sim_per_cycle));
-    motion_model->initParameters(parameters);
+    if (!motion_model->initParameters(parameters))
+        return false;
     prediction_model.reset(new underwaterVehicle::DynamicModel(parameters.ctrl_order, parameters.samplingtime, parameters.sim_per_cycle));
-    prediction_model->initParameters(parameters);
+    if (!prediction_model->initParameters(parameters))
+        return false;
     FilterState current_state;
     if(getCurrentState(current_state))
         motion_model->setLinearVelocity(current_state.mu.block(0,0,3,1));
+    return true;
 }
 
 void VelocityUKF::predictionStep(const double delta)

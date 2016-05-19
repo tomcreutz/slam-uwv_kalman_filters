@@ -20,7 +20,7 @@ public:
     VelocityUKF(const FilterState& initial_state);
     virtual ~VelocityUKF() {}
 
-    void setupMotionModel(const underwaterVehicle::Parameters& parameters);
+    bool setupMotionModel(const underwaterVehicle::Parameters& parameters);
 
     void predictionStep(const double delta);
 
