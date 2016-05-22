@@ -37,7 +37,7 @@ processMotionModel(const VelocityState &state, underwaterVehicle::DynamicModel& 
 
     // apply velocity delta
     base::Vector3d linear_velocity;
-    motion_model.getLinearVelocity(linear_velocity);
+    motion_model.getLinearVelocity(linear_velocity, false);
     Eigen::Vector3d velocity_delta = linear_velocity - state.velocity;
     VelocityState new_state(state);
     new_state.boxplus(velocity_delta);
