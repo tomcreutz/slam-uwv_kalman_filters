@@ -7,7 +7,7 @@
 #include <map>
 #include <boost/shared_ptr.hpp>
 
-namespace uwv_filters
+namespace uwv_kalman_filters
 {
 
 class VelocityUKF : public pose_estimation::UKF<pose_estimation::VelocityState>

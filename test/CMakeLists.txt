@@ -1,3 +1,2 @@
 rock_testsuite(test_suite suite.cpp
-   #test_Dummy.cpp
-   DEPS uwv_filters)
+   DEPS uwv_kalman_filters)

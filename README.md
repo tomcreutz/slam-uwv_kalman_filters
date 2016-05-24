@@ -1,4 +1,4 @@
-uwv_filters
+uwv_kalman_filters
 =============
 Collection of filters for the underwater vehicle context
 

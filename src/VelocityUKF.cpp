@@ -1,6 +1,6 @@
 #include "VelocityUKF.hpp"
 
-using namespace uwv_filters;
+using namespace uwv_kalman_filters;
 
 const std::string VelocityUKF::acceleration_measurement = "acceleration";
 const std::string VelocityUKF::thruster_rpm_measurement = "thruster_rpm_commands";
