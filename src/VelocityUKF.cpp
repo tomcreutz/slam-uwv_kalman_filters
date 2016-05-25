@@ -3,7 +3,7 @@
 using namespace uwv_kalman_filters;
 
 const std::string VelocityUKF::acceleration_measurement = "acceleration";
-const std::string VelocityUKF::thruster_rpm_measurement = "thruster_rpm_commands";
+const std::string VelocityUKF::body_efforts_measurement = "body_efforts";
 const std::string VelocityUKF::angular_velocity_measurement = "angular_velocity";
 
 /**
@@ -24,25 +24,24 @@ processAcc(const VelocityState &state, const Eigen::Vector3d& acc, double delta_
 
 template <typename VelocityState>
 VelocityState
-processMotionModel(const VelocityState &state, underwaterVehicle::DynamicModel& motion_model,
+processMotionModel(const VelocityState &state, uwv_dynamic_model::ModelSimulation& motion_model,
                    const Eigen::Quaterniond& orientation, const base::Vector3d& angular_velocity,
-                   const base::samples::Joints& joints, double delta_time)
+                   const base::Vector6d& body_efforts, double delta_time)
 {
     // reset current state
-    motion_model.setPosition(base::Vector3d::Zero());
-    motion_model.setOrientation(orientation);
-    motion_model.setLinearVelocity(state.velocity);
-    motion_model.setAngularVelocity(angular_velocity);
+    uwv_dynamic_model::PoseVelocityState model_state;
+    model_state.position = base::Vector3d::Zero();
+    model_state.orientation = orientation;
+    model_state.linear_velocity = state.velocity;
+    model_state.angular_velocity = angular_velocity;
     motion_model.setSamplingTime(delta_time);
 
     // apply joint commands
-    if (!motion_model.sendRPMCommands(joints))
-        throw std::runtime_error("Failed to apply thruster commands in pretiction step!");
+    motion_model.sendEffort(body_efforts, model_state);
 
     // apply velocity delta
-    base::Vector3d linear_velocity;
-    motion_model.getLinearVelocity(linear_velocity, false);
-    Eigen::Vector3d velocity_delta = linear_velocity - state.velocity;
+    uwv_dynamic_model::PoseVelocityState new_model_state = motion_model.getPose();
+    Eigen::Vector3d velocity_delta = new_model_state.linear_velocity - state.velocity;
     VelocityState new_state(state);
     new_state.velocity.boxplus(velocity_delta);
 
@@ -61,17 +60,23 @@ VelocityUKF::VelocityUKF(const AbstractFilter::FilterState& initial_state)
     MTK::setDiagonal(process_noise_cov, &WState::velocity, 0.0001);
 }
 
-bool VelocityUKF::setupMotionModel(const underwaterVehicle::Parameters& parameters)
+bool VelocityUKF::setupMotionModel(const uwv_dynamic_model::UWVParameters& parameters)
 {
-    motion_model.reset(new underwaterVehicle::DynamicModel(parameters.ctrl_order, parameters.samplingtime, parameters.sim_per_cycle));
-    if (!motion_model->initParameters(parameters))
-        return false;
-    prediction_model.reset(new underwaterVehicle::DynamicModel(parameters.ctrl_order, parameters.samplingtime, parameters.sim_per_cycle));
-    if (!prediction_model->initParameters(parameters))
-        return false;
+    motion_model.reset(new uwv_dynamic_model::ModelSimulation(uwv_dynamic_model::DYNAMIC, 0.01, 1));
+    motion_model->setUWVParameters(parameters);
+    prediction_model.reset(new uwv_dynamic_model::ModelSimulation(uwv_dynamic_model::DYNAMIC, 0.01, 1));
+    prediction_model->setUWVParameters(parameters);
+
     FilterState current_state;
     if(getCurrentState(current_state))
-        motion_model->setLinearVelocity(current_state.mu.block(0,0,3,1));
+    {
+        uwv_dynamic_model::PoseVelocityState model_state;
+        model_state.position = base::Vector3d::Zero();
+        model_state.orientation = base::Quaterniond::Identity();
+        model_state.linear_velocity = current_state.mu.block(0,0,3,1);
+        model_state.angular_velocity = current_state.mu.block(3,0,3,1);
+        motion_model->setPose(model_state);
+    }
     return true;
 }
 
@@ -80,34 +85,20 @@ void VelocityUKF::predictionStep(const double delta)
     MTK_UKF::cov process_noise = process_noise_cov;
 
     // use motion model to determine the current acceleration
-    std::map<std::string, pose_estimation::Measurement>::const_iterator thruster_command = latest_measurements.find(thruster_rpm_measurement);
-    if(thruster_command != latest_measurements.end())
+    std::map<std::string, pose_estimation::Measurement>::const_iterator body_efforts = latest_measurements.find(body_efforts_measurement);
+    if(body_efforts != latest_measurements.end())
     {
         if (motion_model.get() == NULL || prediction_model.get() == NULL)
             throw std::runtime_error("Motion model is not initialized!");
 
-        base::samples::Joints joints;
-        joints.time = thruster_command->second.time;
-        joints.elements.resize(thruster_command->second.mu.rows());
-        for(unsigned i = 0; i < thruster_command->second.mu.rows(); i++)
-        {
-            joints.elements[i].speed = (float)thruster_command->second.mu(i);
-        }
-
         // apply motion commands
-        base::Vector3d angular_velocity;
-        motion_model->getAngularVelocity(angular_velocity);
-        base::Quaterniond orientation;
-        motion_model->getQuatOrienration(orientation);
-        ukf->predict(boost::bind(processMotionModel<WState>, _1, *prediction_model, orientation,
-                                 angular_velocity, joints, delta), MTK_UKF::cov(delta * process_noise));
+        uwv_dynamic_model::PoseVelocityState model_state = motion_model->getPose();
+        ukf->predict(boost::bind(processMotionModel<WState>, _1, *prediction_model, model_state.orientation,
+                                 model_state.angular_velocity, body_efforts->second.mu, delta), MTK_UKF::cov(delta * process_noise));
 
         // this motion model is updated to have a guess about the current orientation
         motion_model->setSamplingTime(delta);
-        if (!motion_model->sendRPMCommands(joints))
-        {
-            LOG_ERROR_S << "Failed to apply thruster commands to motion model!";
-        }
+        motion_model->sendEffort(body_efforts->second.mu);
 
         return;
     }
@@ -153,7 +144,7 @@ void VelocityUKF::correctionStepUser(const pose_estimation::Measurement& measure
     {
         latest_measurements[measurement.measurement_name] = measurement;
     }
-    else if(measurement.measurement_name == thruster_rpm_measurement)
+    else if(measurement.measurement_name == body_efforts_measurement)
     {
         if(motion_model)
             latest_measurements[measurement.measurement_name] = measurement;
@@ -165,7 +156,9 @@ void VelocityUKF::correctionStepUser(const pose_estimation::Measurement& measure
         if(motion_model)
         {
             // update angular velocity in model
-            motion_model->setAngularVelocity(measurement.mu);
+            uwv_dynamic_model::PoseVelocityState model_state = motion_model->getPose();
+            model_state.angular_velocity = measurement.mu;
+            motion_model->setPose(model_state);
         }
         latest_measurements[measurement.measurement_name] = measurement;
     }
