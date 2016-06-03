@@ -13,15 +13,18 @@ namespace pose_estimation
 {
 
 typedef MTK::vect<3, double> VelocityType;
+typedef MTK::vect<1, double> ZPosType;
 
 MTK_BUILD_MANIFOLD(VelocityState,
    ((VelocityType, velocity))
+   ((ZPosType, z_position))
 )
 
 template<>
 inline void getStateVector(const VelocityState &state, Eigen::Matrix<VelocityState::scalar, VelocityState::DOF, 1>& state_vector)
 {
     state_vector.block(MTK::getStartIdx(&VelocityState::velocity),0,MTK::getDof(&VelocityState::velocity),1) = state.velocity;
+    state_vector.block(MTK::getStartIdx(&VelocityState::z_position),0,MTK::getDof(&VelocityState::z_position),1) = state.z_position;
 }
 
 }

@@ -14,7 +14,8 @@ VelocityState
 processAcc(const VelocityState &state, const Eigen::Vector3d& acc, double delta_time)
 {
     VelocityState new_state(state);
-    new_state.boxplus(acc, delta_time);
+    new_state.velocity.boxplus(acc, delta_time);
+    new_state.z_position.boxplus(Eigen::Matrix<double,1,1>(new_state.velocity.z()), delta_time);
     return new_state;
 }
 
@@ -40,7 +41,9 @@ processMotionModel(const VelocityState &state, underwaterVehicle::DynamicModel& 
     motion_model.getLinearVelocity(linear_velocity, false);
     Eigen::Vector3d velocity_delta = linear_velocity - state.velocity;
     VelocityState new_state(state);
-    new_state.boxplus(velocity_delta);
+    new_state.velocity.boxplus(velocity_delta);
+    Eigen::Matrix<double, 1, 1> z_vel((orientation * new_state.velocity).z());
+    new_state.z_position.boxplus(z_vel, delta_time);
     return new_state;
 }
 
@@ -169,6 +172,7 @@ void VelocityUKF::muToUKFState(const FilterState::Mu& mu, WState& state) const
     assert(mu.rows() >= WState::DOF);
 
     state.velocity = mu.block(0,0,3,1);
+    state.z_position = mu.block(3,0,1,1);
 }
 
 void VelocityUKF::UKFStateToMu(const WState& state, FilterState::Mu& mu) const
@@ -185,5 +189,6 @@ void VelocityUKF::UKFStateToMu(const WState& state, FilterState::Mu& mu) const
     }
 
     mu.block(0,0,3,1) = state.velocity;
-    mu.block(3,0,3,1) = angular_velocity;
+    mu.block(3,0,1,1) = state.z_position;
+    mu.block(4,0,3,1) = angular_velocity;
 }
