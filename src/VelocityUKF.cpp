@@ -15,7 +15,10 @@ processAcc(const VelocityState &state, const Eigen::Vector3d& acc, double delta_
 {
     VelocityState new_state(state);
     new_state.velocity.boxplus(acc, delta_time);
-    new_state.z_position.boxplus(Eigen::Matrix<double,1,1>(new_state.velocity.z()), delta_time);
+
+    Eigen::Matrix<double,1,1> z_vel;
+    z_vel(0) = new_state.velocity.z();
+    new_state.z_position.boxplus(z_vel, delta_time);
     return new_state;
 }
 
@@ -42,7 +45,10 @@ processMotionModel(const VelocityState &state, underwaterVehicle::DynamicModel& 
     Eigen::Vector3d velocity_delta = linear_velocity - state.velocity;
     VelocityState new_state(state);
     new_state.velocity.boxplus(velocity_delta);
-    Eigen::Matrix<double, 1, 1> z_vel((orientation * new_state.velocity).z());
+
+    // apply velocity in z
+    Eigen::Matrix<double, 1, 1> z_vel;
+    z_vel(0) = (orientation * new_state.velocity).z();
     new_state.z_position.boxplus(z_vel, delta_time);
     return new_state;
 }
