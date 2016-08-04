@@ -24,7 +24,7 @@ processAcc(const VelocityState &state, const Eigen::Vector3d& acc, double delta_
 
 template <typename VelocityState>
 VelocityState
-processMotionModel(const VelocityState &state, uwv_dynamic_model::ModelSimulation& motion_model,
+processMotionModel(const VelocityState &state, boost::shared_ptr<uwv_dynamic_model::ModelSimulation> motion_model,
                    const Eigen::Quaterniond& orientation, const base::Vector3d& angular_velocity,
                    const base::Vector6d& body_efforts, double delta_time)
 {
@@ -34,13 +34,12 @@ processMotionModel(const VelocityState &state, uwv_dynamic_model::ModelSimulatio
     model_state.orientation = orientation;
     model_state.linear_velocity = state.velocity;
     model_state.angular_velocity = angular_velocity;
-    motion_model.setSamplingTime(delta_time);
+    motion_model->setSamplingTime(delta_time);
 
     // apply joint commands
-    motion_model.sendEffort(body_efforts, model_state);
+    uwv_dynamic_model::PoseVelocityState new_model_state = motion_model->sendEffort(body_efforts, model_state);
 
     // apply velocity delta
-    uwv_dynamic_model::PoseVelocityState new_model_state = motion_model.getPose();
     Eigen::Vector3d velocity_delta = new_model_state.linear_velocity - state.velocity;
     VelocityState new_state(state);
     new_state.velocity.boxplus(velocity_delta);
@@ -93,7 +92,7 @@ void VelocityUKF::predictionStep(const double delta)
 
         // apply motion commands
         uwv_dynamic_model::PoseVelocityState model_state = motion_model->getPose();
-        ukf->predict(boost::bind(processMotionModel<WState>, _1, *prediction_model, model_state.orientation,
+        ukf->predict(boost::bind(processMotionModel<WState>, _1, prediction_model, model_state.orientation,
                                  model_state.angular_velocity, body_efforts->second.mu, delta), MTK_UKF::cov(delta * process_noise));
 
         // this motion model is updated to have a guess about the current orientation
