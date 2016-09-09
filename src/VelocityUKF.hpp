@@ -18,8 +18,8 @@ namespace uwv_dynamic_model
 namespace uwv_kalman_filters
 {
 
-typedef MTK::vect<3, double> VelocityType;
-typedef MTK::vect<1, double> ZPosType;
+typedef ukfom::mtkwrap< MTK::vect<3, double> > VelocityType;
+typedef ukfom::mtkwrap< MTK::vect<1, double> > ZPosType;
 
 MTK_BUILD_MANIFOLD(VelocityState,
    ((VelocityType, velocity))
