@@ -1,0 +1,50 @@
+#ifndef _UWV_KALMAN_FILTERS_POSE_UKF_CONFIG_HPP
+#define _UWV_KALMAN_FILTERS_POSE_UKF_CONFIG_HPP
+
+#include <base/Eigen.hpp>
+
+namespace uwv_kalman_filters
+{
+
+struct InertialNoiseParameters
+{
+    /*  Random walk ((m/s^s)/sqrt(Hz) for accelerometers or (rad/s)/sqrt(Hz) for gyros) */
+    base::Vector3d randomwalk;
+
+    /*  Bias offset in static regimen (initial bias value) */
+    base::Vector3d bias_offset;
+
+    /* Bias instability (m/s^2 for accelerometers or rad/s for gyros) */
+    base::Vector3d bias_instability;
+
+    /* Tau value to limit the bias gain in seconds */
+    double bias_tau;
+};
+
+struct LocationConfiguration
+{
+    /* Latitude in radians */
+    double latitude;
+
+    /* Longitude in radians */
+    double longitude;
+
+    /* Altitude in meters */
+    double altitude;
+};
+
+struct PoseUKFConfig
+{
+    /* Inerial noise parameters for acceleration */
+    InertialNoiseParameters acceleration;
+
+    /** Inerial noise parameters for acceleration */
+    InertialNoiseParameters rotation_rate;
+
+    /* Latitude and Longitude of operational area */
+    LocationConfiguration location;
+};
+
+}
+
+#endif
