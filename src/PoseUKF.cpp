@@ -2,7 +2,7 @@
 #include <base/Float.hpp>
 #include <base-logging/Logging.hpp>
 #include <uwv_dynamic_model/DynamicModel.hpp>
-#include <pose_estimation/GravityModel.hpp>
+#include <pose_estimation/GravitationalModel.hpp>
 
 using namespace uwv_kalman_filters;
 
