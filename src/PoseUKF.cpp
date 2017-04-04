@@ -168,6 +168,20 @@ void PoseUKF::integrateMeasurement(const XY_Position& xy_position)
                 ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }
 
+void PoseUKF::integrateMeasurement(const GeographicPosition& geo_position, const Eigen::Vector3d& gps_in_body)
+{
+    checkMeasurment(geo_position.mu, geo_position.cov);
+
+    // project geographic position to local NWU plane
+    Eigen::Matrix<TranslationType::scalar, 2, 1> projected_position;
+    projection->worldToNav(geo_position.mu.x(), geo_position.mu.y(), projected_position.x(), projected_position.y());
+    projected_position = projected_position - (ukf->mu().orientation * gps_in_body).head<2>();
+
+    ukf->update(projected_position, boost::bind(measurementXYPosition<State>, _1),
+                boost::bind(ukfom::id< XY_Position::Cov >, geo_position.cov),
+                ukfom::accept_any_mahalanobis_distance<State::scalar>);
+}
+
 void PoseUKF::integrateMeasurement(const BodyEffortsMeasurement& body_efforts)
 {
     checkMeasurment(body_efforts.mu, body_efforts.cov);

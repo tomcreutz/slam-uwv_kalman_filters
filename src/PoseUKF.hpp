@@ -24,6 +24,7 @@ namespace uwv_kalman_filters
 class PoseUKF : public pose_estimation::UnscentedKalmanFilter<PoseState>
 {
 public:
+    MEASUREMENT(GeographicPosition, 2)
     MEASUREMENT(XY_Position, 2)
     MEASUREMENT(Z_Position, 1)
     MEASUREMENT(RotationRate, 3)
@@ -36,6 +37,11 @@ public:
             const LocationConfiguration& location, const uwv_dynamic_model::UWVParameters& model_parameters,
             const Eigen::Vector3d& imu_in_body, double gyro_bias_tau, double acc_bias_tau);
     virtual ~PoseUKF() {}
+
+    /* Latitude and Longitude in WGS 84 in radian.
+     * Uncertainty expressed in m on earth surface */
+    void integrateMeasurement(const GeographicPosition& geo_position,
+                              const Eigen::Vector3d& gps_in_body = Eigen::Vector3d::Zero());
 
     /* 2D Position expressed in the navigation frame */
     void integrateMeasurement(const XY_Position& xy_position);
