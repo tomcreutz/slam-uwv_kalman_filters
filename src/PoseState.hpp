@@ -20,9 +20,9 @@ typedef ukfom::mtkwrap<RotationType::vect_type> BiasType;
 typedef ukfom::mtkwrap< MTK::vect<1> > GravityType;
 
 MTK_BUILD_MANIFOLD(PoseState,
-   ((TranslationType, position)) // position of IMU in navigation/target frame
-   ((RotationType, orientation)) // orientation of IMU in navigation/target frame
-   ((VelocityType, velocity)) // velocity of IMU in navigation/target frame
+   ((TranslationType, position)) // position of IMU in navigation frame
+   ((RotationType, orientation)) // orientation of IMU in navigation frame
+   ((VelocityType, velocity)) // velocity of IMU in navigation frame
    ((AccelerationType, acceleration)) // acceleration in IMU frame
    ((BiasType, bias_gyro))
    ((BiasType, bias_acc))

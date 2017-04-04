@@ -3,13 +3,15 @@
 #include <base-logging/Logging.hpp>
 #include <uwv_dynamic_model/DynamicModel.hpp>
 #include <pose_estimation/GravitationalModel.hpp>
+#include <pose_estimation/GeographicProjection.hpp>
 
 using namespace uwv_kalman_filters;
 
 // process model
 template <typename FilterState>
 FilterState
-processModel(const FilterState &state, const Eigen::Vector3d& rotation_rate, const Eigen::Vector3d& earth_rotation,
+processModel(const FilterState &state, const Eigen::Vector3d& rotation_rate,
+             boost::shared_ptr<pose_estimation::GeographicProjection> projection,
              double gyro_bias_tau, double acc_bias_tau, double delta_time)
 {
     FilterState new_state(state);
@@ -18,6 +20,9 @@ processModel(const FilterState &state, const Eigen::Vector3d& rotation_rate, con
     new_state.position.boxplus(state.velocity, delta_time);
 
     // apply angular velocity
+    double latitude, longitude;
+    projection->navToWorld(state.position.x(), state.position.y(), latitude, longitude);
+    Eigen::Vector3d earth_rotation = Eigen::Vector3d(pose_estimation::EARTHW * cos(latitude), 0., pose_estimation::EARTHW * sin(latitude));
     Eigen::Vector3d angular_velocity = state.orientation * (rotation_rate - state.bias_gyro) - earth_rotation;
     new_state.orientation.boxplus(angular_velocity, delta_time);
 
@@ -68,10 +73,14 @@ measurementAcceleration(const FilterState &state)
 template <typename FilterState>
 Eigen::Matrix<TranslationType::scalar, 3, 1>
 measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model::DynamicModel> dynamic_model,
-                    const Eigen::Vector3d& imu_in_body, const Eigen::Vector3d& rotation_rate,
-                   const Eigen::Vector3d& earth_rotation)
+                   const Eigen::Vector3d& imu_in_body, const Eigen::Vector3d& rotation_rate,
+                   boost::shared_ptr<pose_estimation::GeographicProjection> projection)
 {
     RotationType::base orientation_inv = state.orientation.inverse();
+
+    double latitude, longitude;
+    projection->navToWorld(state.position.x(), state.position.y(), latitude, longitude);
+    Eigen::Vector3d earth_rotation = Eigen::Vector3d(pose_estimation::EARTHW * cos(latitude), 0., pose_estimation::EARTHW * sin(latitude));
 
     // for the rotation rate IMU and body frame a the same, since they are not rotated to each other
     Eigen::Vector3d rotation_rate_body = rotation_rate - state.bias_gyro - orientation_inv * earth_rotation;
@@ -101,10 +110,10 @@ PoseUKF::PoseUKF(const State& initial_state, const Covariance& state_cov,
 
     rotation_rate = RotationRate::Mu::Zero();
 
-    earth_rotation = Eigen::Vector3d(pose_estimation::EARTHW * cos(location.latitude), 0., pose_estimation::EARTHW * sin(location.latitude));
-
     dynamic_model.reset(new uwv_dynamic_model::DynamicModel());
     dynamic_model->setUWVParameters(model_parameters);
+
+    projection.reset(new pose_estimation::GeographicProjection(location.latitude, location.longitude));
 }
 
 
@@ -117,7 +126,7 @@ void PoseUKF::predictionStepImpl(double delta_t)
     process_noise.block(6,6,3,3) = rot * process_noise_cov.block(6,6,3,3) * rot.transpose();
     process_noise = pow(delta_t, 2.) * process_noise;
 
-    ukf->predict(boost::bind(processModel<WState>, _1, rotation_rate, earth_rotation, gyro_bias_tau, acc_bias_tau, delta_t),
+    ukf->predict(boost::bind(processModel<WState>, _1, rotation_rate, projection, gyro_bias_tau, acc_bias_tau, delta_t),
                  MTK_UKF::cov(process_noise));
 }
 
@@ -162,12 +171,15 @@ void PoseUKF::integrateMeasurement(const XY_Position& xy_position)
 void PoseUKF::integrateMeasurement(const BodyEffortsMeasurement& body_efforts)
 {
     checkMeasurment(body_efforts.mu, body_efforts.cov);
-    ukf->update(body_efforts.mu, boost::bind(measurementEfforts<State>, _1, dynamic_model, imu_in_body, rotation_rate, earth_rotation),
+    ukf->update(body_efforts.mu, boost::bind(measurementEfforts<State>, _1, dynamic_model, imu_in_body, rotation_rate, projection),
                 boost::bind(ukfom::id< BodyEffortsMeasurement::Cov >, body_efforts.cov),
                 ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }
 
 PoseUKF::RotationRate::Mu PoseUKF::getRotationRate()
 {
+    double latitude, longitude;
+    projection->navToWorld(ukf->mu().position.x(), ukf->mu().position.y(), latitude, longitude);
+    Eigen::Vector3d earth_rotation = Eigen::Vector3d(pose_estimation::EARTHW * cos(latitude), 0., pose_estimation::EARTHW * sin(latitude));
     return rotation_rate - ukf->mu().bias_gyro - ukf->mu().orientation.inverse() * earth_rotation;
 }

@@ -13,6 +13,11 @@ namespace uwv_dynamic_model
     class DynamicModel;
 }
 
+namespace pose_estimation
+{
+    class GeographicProjection;
+}
+
 namespace uwv_kalman_filters
 {
 
@@ -41,7 +46,7 @@ public:
     /* Rotation rates of IMU expressed in the IMU frame */
     void integrateMeasurement(const RotationRate& rotation_rate);
 
-    /* Accelerations of IMU exxpressed in the IMU frame */
+    /* Accelerations of IMU expressed in the IMU frame */
     void integrateMeasurement(const Acceleration& acceleration);
 
     /* Velocities expressed in the IMU frame */
@@ -58,8 +63,8 @@ protected:
 
 
     boost::shared_ptr<uwv_dynamic_model::DynamicModel> dynamic_model;
+    boost::shared_ptr<pose_estimation::GeographicProjection> projection;
     RotationRate::Mu rotation_rate;
-    Eigen::Vector3d earth_rotation;
     Eigen::Vector3d imu_in_body;
     double gyro_bias_tau;
     double acc_bias_tau;
