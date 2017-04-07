@@ -56,10 +56,10 @@ measurementZPosition(const FilterState &state)
 
 template <typename FilterState>
 VelocityType
-measurementVelocity(const FilterState &state)
+measurementVelocity(const FilterState &state, const Eigen::Quaterniond& orientation)
 {
     // return expected velocities in the IMU frame
-    return VelocityType(state.orientation.inverse() * state.velocity);
+    return VelocityType(orientation.inverse() * state.velocity);
 }
 
 template <typename FilterState>
@@ -67,7 +67,8 @@ AccelerationType
 measurementAcceleration(const FilterState &state)
 {
     // returns expected accelerations in the IMU frame
-    return AccelerationType(state.acceleration + state.bias_acc + state.orientation.inverse() * Eigen::Vector3d(0., 0., state.gravity(0)));
+    base::Quaterniond orientation = base::removeYaw(state.orientation);
+    return AccelerationType(state.acceleration + state.bias_acc + orientation.inverse() * Eigen::Vector3d(0., 0., state.gravity(0)));
 }
 
 template <typename FilterState>
@@ -133,7 +134,7 @@ void PoseUKF::predictionStepImpl(double delta_t)
 void PoseUKF::integrateMeasurement(const Velocity& velocity)
 {
     checkMeasurment(velocity.mu, velocity.cov);
-    ukf->update(velocity.mu, boost::bind(measurementVelocity<State>, _1),
+    ukf->update(velocity.mu, boost::bind(measurementVelocity<State>, _1, ukf->mu().orientation),
                 boost::bind(ukfom::id< Velocity::Cov >, velocity.cov),
                 ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }
