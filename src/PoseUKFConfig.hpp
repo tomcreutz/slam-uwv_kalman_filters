@@ -70,6 +70,9 @@ struct PoseUKFConfig
 
     /* Latitude and Longitude of operational area */
     LocationConfiguration location;
+
+    /** Max change of acceleration in m/s^3 */
+    base::Vector3d max_jerk;
 };
 
 }
