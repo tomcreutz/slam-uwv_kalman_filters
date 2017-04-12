@@ -1,4 +1,5 @@
 #include "PoseUKF.hpp"
+#include <math.h>
 #include <base/Float.hpp>
 #include <base-logging/Logging.hpp>
 #include <uwv_dynamic_model/DynamicModel.hpp>
@@ -12,7 +13,9 @@ template <typename FilterState>
 FilterState
 processModel(const FilterState &state, const Eigen::Vector3d& rotation_rate,
              boost::shared_ptr<pose_estimation::GeographicProjection> projection,
-             double gyro_bias_tau, double acc_bias_tau, double delta_time)
+             const LinDampingType::vectorized_type& lin_damping_offset,
+             const QuadDampingType::vectorized_type& quad_damping_offset,
+             const PoseUKF::PoseUKFParameter& filter_parameter, double delta_time)
 {
     FilterState new_state(state);
 
@@ -30,12 +33,19 @@ processModel(const FilterState &state, const Eigen::Vector3d& rotation_rate,
     Eigen::Vector3d acceleration = state.orientation * state.acceleration;
     new_state.velocity.boxplus(acceleration, delta_time);
 
-    Eigen::Vector3d gyro_bias_delta = (-1.0/gyro_bias_tau) * state.bias_gyro;
+    Eigen::Vector3d gyro_bias_delta = (-1.0/filter_parameter.gyro_bias_tau) * state.bias_gyro;
     new_state.bias_gyro.boxplus(gyro_bias_delta, delta_time);
 
-    Eigen::Vector3d acc_bias_delta = (-1.0/acc_bias_tau) * state.bias_acc;
+    Eigen::Vector3d acc_bias_delta = (-1.0/filter_parameter.acc_bias_tau) * state.bias_acc;
     new_state.bias_acc.boxplus(acc_bias_delta, delta_time);
 
+    LinDampingType::vectorized_type lin_damping_delta = (-1.0/filter_parameter.lin_damping_tau) *
+                        (Eigen::Map< const LinDampingType::vectorized_type >(state.lin_damping.data()) - lin_damping_offset);
+    new_state.lin_damping.boxplus(lin_damping_delta, delta_time);
+
+    QuadDampingType::vectorized_type quad_damping_delta = (-1.0/filter_parameter.quad_damping_tau) *
+                        (Eigen::Map< const QuadDampingType::vectorized_type >(state.quad_damping.data()) - quad_damping_offset);
+    new_state.quad_damping.boxplus(quad_damping_delta, delta_time);
     return new_state;
 }
 
@@ -68,25 +78,25 @@ measurementAcceleration(const FilterState &state)
 {
     // returns expected accelerations in the IMU frame
     base::Quaterniond orientation = base::removeYaw(state.orientation);
-    return AccelerationType(state.acceleration + state.bias_acc + orientation.inverse() * Eigen::Vector3d(0., 0., state.gravity(0)));
+    return AccelerationType(Eigen::Vector3d(state.acceleration) + Eigen::Vector3d(state.bias_acc) + orientation.inverse() * Eigen::Vector3d(0., 0., state.gravity(0)));
 }
 
 template <typename FilterState>
 Eigen::Matrix<TranslationType::scalar, 3, 1>
 measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model::DynamicModel> dynamic_model,
-                   const Eigen::Vector3d& imu_in_body, const Eigen::Vector3d& rotation_rate,
+                   const Eigen::Vector3d& imu_in_body, const Eigen::Vector3d& rotation_rate_body, const Eigen::Quaterniond& orientation,
                    boost::shared_ptr<pose_estimation::GeographicProjection> projection)
 {
-    RotationType::base orientation_inv = state.orientation.inverse();
+    // set damping parameters
+    uwv_dynamic_model::UWVParameters params = dynamic_model->getUWVParameters();
+    params.damping_matrices[0].block(0,0,2,2) = state.lin_damping.block(0,0,2,2).cwiseAbs();
+    params.damping_matrices[0].block(0,5,2,1) = state.lin_damping.block(0,2,2,1).cwiseAbs();
+    params.damping_matrices[1].block(0,0,2,2) = state.quad_damping.block(0,0,2,2).cwiseAbs();
+    params.damping_matrices[1].block(0,5,2,1) = state.quad_damping.block(0,2,2,1).cwiseAbs();
+    dynamic_model->setUWVParameters(params);
 
-    double latitude, longitude;
-    projection->navToWorld(state.position.x(), state.position.y(), latitude, longitude);
-    Eigen::Vector3d earth_rotation = Eigen::Vector3d(pose_estimation::EARTHW * cos(latitude), 0., pose_estimation::EARTHW * sin(latitude));
-
-    // for the rotation rate IMU and body frame a the same, since they are not rotated to each other
-    Eigen::Vector3d rotation_rate_body = rotation_rate - state.bias_gyro - orientation_inv * earth_rotation;
     // assume center of rotation to be the body frame
-    Eigen::Vector3d velocity_body = orientation_inv * state.velocity - rotation_rate_body.cross(imu_in_body);
+    Eigen::Vector3d velocity_body = orientation.inverse() * state.velocity - rotation_rate_body.cross(imu_in_body);
     base::Vector6d velocity_6d;
     velocity_6d << velocity_body, rotation_rate_body;
 
@@ -96,16 +106,15 @@ measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model
     // assume the angular acceleration to be zero
     acceleration_6d << acceleration_body, base::Vector3d::Zero();
 
-    base::Vector6d efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, state.orientation);
+    base::Vector6d efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, orientation);
 
     // returns the expected linear body efforts given the current state
-    return efforts.block(0,0,3,1);
+    return efforts.head<3>();
 }
 
 PoseUKF::PoseUKF(const State& initial_state, const Covariance& state_cov,
                 const LocationConfiguration& location, const uwv_dynamic_model::UWVParameters& model_parameters,
-                const Eigen::Vector3d& imu_in_body, double gyro_bias_tau, double acc_bias_tau) :
-                    imu_in_body(imu_in_body), gyro_bias_tau(gyro_bias_tau), acc_bias_tau(acc_bias_tau)
+                const PoseUKFParameter& filter_parameter) : filter_parameter(filter_parameter)
 {
     initializeFilter(initial_state, state_cov);
 
@@ -113,6 +122,9 @@ PoseUKF::PoseUKF(const State& initial_state, const Covariance& state_cov,
 
     dynamic_model.reset(new uwv_dynamic_model::DynamicModel());
     dynamic_model->setUWVParameters(model_parameters);
+
+    lin_damping_offset = Eigen::Map< const LinDampingType::vectorized_type >(initial_state.lin_damping.data());
+    quad_damping_offset = Eigen::Map< const QuadDampingType::vectorized_type >(initial_state.quad_damping.data());
 
     projection.reset(new pose_estimation::GeographicProjection(location.latitude, location.longitude));
 }
@@ -123,11 +135,11 @@ void PoseUKF::predictionStepImpl(double delta_t)
     Eigen::Matrix3d rot = ukf->mu().orientation.matrix();
     Covariance process_noise = process_noise_cov;
     // uncertainty matrix calculations
-    process_noise.block(3,3,3,3) = rot * process_noise_cov.block(3,3,3,3) * rot.transpose();
-    process_noise.block(6,6,3,3) = rot * process_noise_cov.block(6,6,3,3) * rot.transpose();
+    MTK::subblock(process_noise, &State::orientation) = rot * MTK::subblock(process_noise_cov, &State::orientation) * rot.transpose();
+    MTK::subblock(process_noise, &State::velocity) = rot * MTK::subblock(process_noise_cov, &State::velocity) * rot.transpose();
     process_noise = pow(delta_t, 2.) * process_noise;
 
-    ukf->predict(boost::bind(processModel<WState>, _1, rotation_rate, projection, gyro_bias_tau, acc_bias_tau, delta_t),
+    ukf->predict(boost::bind(processModel<WState>, _1, rotation_rate, projection, lin_damping_offset, quad_damping_offset, filter_parameter, delta_t),
                  MTK_UKF::cov(process_noise));
 }
 
@@ -186,7 +198,8 @@ void PoseUKF::integrateMeasurement(const GeographicPosition& geo_position, const
 void PoseUKF::integrateMeasurement(const BodyEffortsMeasurement& body_efforts)
 {
     checkMeasurment(body_efforts.mu, body_efforts.cov);
-    ukf->update(body_efforts.mu, boost::bind(measurementEfforts<State>, _1, dynamic_model, imu_in_body, rotation_rate, projection),
+
+    ukf->update(body_efforts.mu, boost::bind(measurementEfforts<State>, _1, dynamic_model, filter_parameter.imu_in_body, getRotationRate(), ukf->mu().orientation, projection),
                 boost::bind(ukfom::id< BodyEffortsMeasurement::Cov >, body_efforts.cov),
                 ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }

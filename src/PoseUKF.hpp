@@ -24,6 +24,15 @@ namespace uwv_kalman_filters
 class PoseUKF : public pose_estimation::UnscentedKalmanFilter<PoseState>
 {
 public:
+    struct PoseUKFParameter
+    {
+        Eigen::Vector3d imu_in_body;
+        double gyro_bias_tau;
+        double acc_bias_tau;
+        double lin_damping_tau;
+        double quad_damping_tau;
+    };
+
     MEASUREMENT(GeographicPosition, 2)
     MEASUREMENT(XY_Position, 2)
     MEASUREMENT(Z_Position, 1)
@@ -35,7 +44,7 @@ public:
 public:
     PoseUKF(const State& initial_state, const Covariance& state_cov,
             const LocationConfiguration& location, const uwv_dynamic_model::UWVParameters& model_parameters,
-            const Eigen::Vector3d& imu_in_body, double gyro_bias_tau, double acc_bias_tau);
+            const PoseUKFParameter& filter_parameter);
     virtual ~PoseUKF() {}
 
     /* Latitude and Longitude in WGS 84 in radian.
@@ -71,9 +80,9 @@ protected:
     boost::shared_ptr<uwv_dynamic_model::DynamicModel> dynamic_model;
     boost::shared_ptr<pose_estimation::GeographicProjection> projection;
     RotationRate::Mu rotation_rate;
-    Eigen::Vector3d imu_in_body;
-    double gyro_bias_tau;
-    double acc_bias_tau;
+    PoseUKFParameter filter_parameter;
+    LinDampingType::vectorized_type lin_damping_offset;
+    QuadDampingType::vectorized_type quad_damping_offset;
 };
 
 }
