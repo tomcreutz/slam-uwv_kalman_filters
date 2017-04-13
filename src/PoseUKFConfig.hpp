@@ -87,6 +87,9 @@ struct PoseUKFConfig
      * E.g. if the AUV is on the surface.
      */
     base::Vector3d max_effort;
+
+    /* Minimum depth of the AUV to apply the dynamic model  */
+    double dynamic_model_min_depth;
 };
 
 }
