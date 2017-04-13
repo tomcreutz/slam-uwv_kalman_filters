@@ -66,10 +66,18 @@ measurementZPosition(const FilterState &state)
 
 template <typename FilterState>
 VelocityType
-measurementVelocity(const FilterState &state, const Eigen::Quaterniond& orientation)
+measurementVelocityConstantOrientation(const FilterState &state, const Eigen::Quaterniond& orientation)
 {
     // return expected velocities in the IMU frame
     return VelocityType(orientation.inverse() * state.velocity);
+}
+
+template <typename FilterState>
+VelocityType
+measurementVelocity(const FilterState &state)
+{
+    // return expected velocities in the IMU frame
+    return VelocityType(state.orientation.inverse() * state.velocity);
 }
 
 template <typename FilterState>
@@ -146,9 +154,21 @@ void PoseUKF::predictionStepImpl(double delta_t)
 void PoseUKF::integrateMeasurement(const Velocity& velocity)
 {
     checkMeasurment(velocity.mu, velocity.cov);
-    ukf->update(velocity.mu, boost::bind(measurementVelocity<State>, _1, ukf->mu().orientation),
-                boost::bind(ukfom::id< Velocity::Cov >, velocity.cov),
-                ukfom::accept_any_mahalanobis_distance<State::scalar>);
+
+    int idx_yaw = MTK::getStartIdx(&State::orientation) + 2;
+    double var_yaw = ukf->sigma()(idx_yaw, idx_yaw);
+    if(sqrt(var_yaw) < filter_parameter.heading_converged_std)
+    {
+        ukf->update(velocity.mu, boost::bind(measurementVelocity<State>, _1),
+            boost::bind(ukfom::id< Velocity::Cov >, velocity.cov),
+            ukfom::accept_any_mahalanobis_distance<State::scalar>);
+    }
+    else
+    {
+        ukf->update(velocity.mu, boost::bind(measurementVelocityConstantOrientation<State>, _1, ukf->mu().orientation),
+            boost::bind(ukfom::id< Velocity::Cov >, velocity.cov),
+            ukfom::accept_any_mahalanobis_distance<State::scalar>);
+    }
 }
 
 void PoseUKF::integrateMeasurement(const Acceleration& acceleration)

@@ -31,6 +31,7 @@ public:
         double acc_bias_tau;
         double lin_damping_tau;
         double quad_damping_tau;
+        double heading_converged_std;
     };
 
     MEASUREMENT(GeographicPosition, 2)
