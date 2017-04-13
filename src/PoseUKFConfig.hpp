@@ -73,6 +73,20 @@ struct PoseUKFConfig
 
     /** Max change of acceleration in m/s^3 */
     base::Vector3d max_jerk;
+
+    /** Max velocity in m/s
+     * This is used to define the uncertainty of
+     * unknown velocity measurements.
+     * E.g. if the DVL has no bottom lock.
+     */
+    base::Vector3d max_velocity;
+
+    /** Max effort in N
+     * This is used to define the uncertainty of
+     * unknown effort measurements.
+     * E.g. if the AUV is on the surface.
+     */
+    base::Vector3d max_effort;
 };
 
 }
