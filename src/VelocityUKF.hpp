@@ -44,15 +44,16 @@ public:
     void integrateMeasurement(const GyroMeasurement& measurement);
     void integrateMeasurement(const BodyEffortsMeasurement& measurement);
     void integrateMeasurement(const PressureMeasurement& measurement);
+    void updateOrientation(const Eigen::Quaterniond& orientation);
 
 protected:
     void predictionStepImpl(double delta_t);
 
 protected:
-    boost::shared_ptr<uwv_dynamic_model::ModelSimulation> motion_model;
     boost::shared_ptr<uwv_dynamic_model::ModelSimulation> prediction_model;
     GyroMeasurement angular_velocity;
     BodyEffortsMeasurement body_efforts;
+    Eigen::Quaterniond orientation;
 };
 
 }

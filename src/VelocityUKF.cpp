@@ -52,25 +52,14 @@ VelocityUKF::VelocityUKF(const State& initial_state, const Covariance& state_cov
 
     process_noise_cov = Covariance::Zero();
     MTK::setDiagonal(process_noise_cov, &WState::velocity, 0.0001);
+    
+    orientation = Eigen::Quaterniond::Identity();
 }
 
 bool VelocityUKF::setupMotionModel(const uwv_dynamic_model::UWVParameters& parameters)
 {
-    motion_model.reset(new uwv_dynamic_model::ModelSimulation(uwv_dynamic_model::DYNAMIC, 0.01, 1));
-    motion_model->setUWVParameters(parameters);
     prediction_model.reset(new uwv_dynamic_model::ModelSimulation(uwv_dynamic_model::DYNAMIC, 0.01, 1));
     prediction_model->setUWVParameters(parameters);
-
-    uwv_dynamic_model::PoseVelocityState model_state;
-    model_state.position = base::Vector3d::Zero();
-    model_state.orientation = base::Quaterniond::Identity();
-    model_state.angular_velocity = angular_velocity.mu;
-    State current_state;
-    if(getCurrentState(current_state))
-    {
-        model_state.linear_velocity = current_state.velocity;
-    }
-    motion_model->setPose(model_state);
 
     return true;
 }
@@ -86,13 +75,6 @@ void VelocityUKF::integrateMeasurement(const DVLMeasurement& measurement)
 void VelocityUKF::integrateMeasurement(const GyroMeasurement& measurement)
 {
     checkMeasurment(measurement.mu, measurement.cov);
-    if(motion_model)
-    {
-        // update angular velocity in model
-        uwv_dynamic_model::PoseVelocityState model_state = motion_model->getPose();
-        model_state.angular_velocity = measurement.mu;
-        motion_model->setPose(model_state);
-    }
     angular_velocity = measurement;
 }
 
@@ -110,20 +92,20 @@ void VelocityUKF::integrateMeasurement(const PressureMeasurement& measurement)
                 ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }
 
+void VelocityUKF::updateOrientation(const Eigen::Quaterniond& orientation)
+{
+    this->orientation = orientation;
+}
+
 void VelocityUKF::predictionStepImpl(double delta)
 {
     // use motion model to determine the current acceleration
-    if (motion_model.get() == NULL || prediction_model.get() == NULL)
+    if (prediction_model.get() == NULL)
         throw std::runtime_error("Motion model is not initialized!");
 
     // apply motion commands
-    uwv_dynamic_model::PoseVelocityState model_state = motion_model->getPose();
-    ukf->predict(boost::bind(processMotionModel<WState>, _1, prediction_model, model_state.orientation,
+    ukf->predict(boost::bind(processMotionModel<WState>, _1, prediction_model, orientation,
                                 angular_velocity.mu, body_efforts.mu, delta), MTK_UKF::cov(delta * process_noise_cov));
-
-    // this motion model is updated to have a guess about the current orientation
-    motion_model->setSamplingTime(delta);
-    motion_model->sendEffort(body_efforts.mu);
 
     return;
 }
