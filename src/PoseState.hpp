@@ -25,7 +25,7 @@ MTK_BUILD_MANIFOLD(PoseState,
    ((TranslationType, position)) // position of IMU in navigation frame
    ((RotationType, orientation)) // orientation of IMU in navigation frame
    ((VelocityType, velocity)) // velocity of IMU in navigation frame
-   ((AccelerationType, acceleration)) // acceleration in IMU frame
+   ((AccelerationType, acceleration)) // acceleration of IMU in navigation frame
    ((BiasType, bias_gyro))
    ((BiasType, bias_acc))
    ((GravityType, gravity))
