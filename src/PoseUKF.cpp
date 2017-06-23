@@ -85,14 +85,6 @@ measurementZPosition(const FilterState &state)
 
 template <typename FilterState>
 VelocityType
-measurementVelocityConstantOrientation(const FilterState &state, const Eigen::Quaterniond& orientation)
-{
-    // return expected velocities in the IMU frame
-    return VelocityType(orientation.inverse() * state.velocity);
-}
-
-template <typename FilterState>
-VelocityType
 measurementVelocity(const FilterState &state)
 {
     // return expected velocities in the IMU frame
@@ -130,7 +122,7 @@ measurementWaterCurrents(const FilterState &state, double cell_weighting)
 template <typename FilterState>
 Eigen::Matrix<TranslationType::scalar, 3, 1>
 measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model::DynamicModel> dynamic_model,
-                   const Eigen::Vector3d& imu_in_body, const Eigen::Vector3d& rotation_rate_body, const Eigen::Quaterniond& orientation)
+                   const Eigen::Vector3d& imu_in_body, const Eigen::Vector3d& rotation_rate_body)
 {
     // set damping parameters
     uwv_dynamic_model::UWVParameters params = dynamic_model->getUWVParameters();
@@ -147,18 +139,18 @@ measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model
     water_velocity[1] = state.water_velocity[1];
     water_velocity[2] = 0; // start with the assumption of zero water current velocity in the Z
     
-    Eigen::Vector3d velocity_body = orientation.inverse() * (state.velocity) - rotation_rate_body.cross(imu_in_body);
-    velocity_body = velocity_body - orientation.inverse() * water_velocity;
+    Eigen::Vector3d velocity_body = state.orientation.inverse() * (state.velocity) - rotation_rate_body.cross(imu_in_body);
+    velocity_body = velocity_body - state.orientation.inverse() * water_velocity;
     base::Vector6d velocity_6d;
     velocity_6d << velocity_body, rotation_rate_body;
 
     // assume center of rotation to be the body frame
-    Eigen::Vector3d acceleration_body = orientation.inverse() * state.acceleration - rotation_rate_body.cross(rotation_rate_body.cross(imu_in_body));
+    Eigen::Vector3d acceleration_body = state.orientation.inverse() * state.acceleration - rotation_rate_body.cross(rotation_rate_body.cross(imu_in_body));
     base::Vector6d acceleration_6d;
     // assume the angular acceleration to be zero
     acceleration_6d << acceleration_body, base::Vector3d::Zero();
 
-    base::Vector6d efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, orientation);
+    base::Vector6d efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, state.orientation);
 
     // returns the expected linear body efforts given the current state
     return efforts.head<3>();
@@ -234,21 +226,9 @@ void PoseUKF::predictionStepImpl(double delta_t)
 void PoseUKF::integrateMeasurement(const Velocity& velocity)
 {
     checkMeasurment(velocity.mu, velocity.cov);
-
-    int idx_yaw = MTK::getStartIdx(&State::orientation) + 2;
-    double var_yaw = ukf->sigma()(idx_yaw, idx_yaw);
-    if(sqrt(var_yaw) < filter_parameter.heading_converged_std)
-    {
-        ukf->update(velocity.mu, boost::bind(measurementVelocity<State>, _1),
-            boost::bind(ukfom::id< Velocity::Cov >, velocity.cov),
-            d2p99<State::scalar>);
-    }
-    else
-    {
-        ukf->update(velocity.mu, boost::bind(measurementVelocityConstantOrientation<State>, _1, ukf->mu().orientation),
-            boost::bind(ukfom::id< Velocity::Cov >, velocity.cov),
-            d2p99<State::scalar>);
-    }
+    ukf->update(velocity.mu, boost::bind(measurementVelocity<State>, _1),
+        boost::bind(ukfom::id< Velocity::Cov >, velocity.cov),
+        d2p99<State::scalar>);
 }
 
 void PoseUKF::integrateMeasurement(const Acceleration& acceleration)
@@ -299,7 +279,7 @@ void PoseUKF::integrateMeasurement(const BodyEffortsMeasurement& body_efforts)
 {
     checkMeasurment(body_efforts.mu, body_efforts.cov);
 
-    ukf->update(body_efforts.mu, boost::bind(measurementEfforts<State>, _1, dynamic_model, filter_parameter.imu_in_body, getRotationRate(), ukf->mu().orientation),
+    ukf->update(body_efforts.mu, boost::bind(measurementEfforts<State>, _1, dynamic_model, filter_parameter.imu_in_body, getRotationRate()),
                 boost::bind(ukfom::id< BodyEffortsMeasurement::Cov >, body_efforts.cov),
                 ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }

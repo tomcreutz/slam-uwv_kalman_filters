@@ -106,11 +106,6 @@ struct PoseUKFConfig
 
     /* Minimum depth of the AUV to apply the dynamic model  */
     double dynamic_model_min_depth;
-
-    /* Lower border of heading uncertainty after it is considered to be stable.
-     * This allows to use the state orientation in the velocity integration.
-     */
-    double heading_converged_std;
 };
 
 }
