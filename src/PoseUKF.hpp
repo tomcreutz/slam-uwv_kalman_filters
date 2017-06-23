@@ -32,6 +32,10 @@ public:
         double lin_damping_tau;
         double quad_damping_tau;
         double heading_converged_std;
+        double water_velocity_tau; // time constant for water currents
+        double water_velocity_limits; //long term 1 sigma bounds for currents
+        double water_velocity_scale; // spatial scale for water current change in m/s / m
+        double adcp_bias_tau; 
     };
 
     MEASUREMENT(GeographicPosition, 2)
@@ -41,6 +45,7 @@ public:
     MEASUREMENT(Acceleration, 3)
     MEASUREMENT(Velocity, 3)
     MEASUREMENT(BodyEffortsMeasurement, 3)
+    MEASUREMENT(WaterVelocityMeasurement, 2)
 
 public:
     PoseUKF(const State& initial_state, const Covariance& state_cov,
@@ -70,6 +75,9 @@ public:
 
     /* Linear efforts in the body frame */
     void integrateMeasurement(const BodyEffortsMeasurement& body_efforts);
+   
+    /* Water Velocities from ADCP expressed in the IMU frame */
+    void integrateMeasurement(const WaterVelocityMeasurement& adcp_measurements, double cell_weighting);
 
     /* Returns rotation rate in IMU frame */
     RotationRate::Mu getRotationRate();

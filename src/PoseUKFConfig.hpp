@@ -6,6 +6,19 @@
 namespace uwv_kalman_filters
 {
 
+struct WaterVelocityParameters
+{
+    double tau; // time scale for water current change
+
+    double limits; // limits of the water current change from temporal change
+
+    double scale; // rate change of currents based on spatial change
+
+    double adcp_bias_tau; 
+
+    double adcp_bias_limits;
+};
+
 struct InertialNoiseParameters
 {
     /*  Random walk ((m/s^s)/sqrt(Hz) for accelerometers or (rad/s)/sqrt(Hz) for gyros) */

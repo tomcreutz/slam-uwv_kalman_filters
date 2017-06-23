@@ -45,6 +45,26 @@ processModel(const FilterState &state, const Eigen::Vector3d& rotation_rate,
     QuadDampingType::vectorized_type quad_damping_delta = (-1.0/filter_parameter.quad_damping_tau) *
                         (Eigen::Map< const QuadDampingType::vectorized_type >(state.quad_damping.data()) - quad_damping_offset);
     new_state.quad_damping.boxplus(quad_damping_delta, delta_time);
+    
+    //XY water velocity state changes due to position change over a period of time (delta P ~ V * dt). This should be reflected in the process noise. 
+    //Does not account for revisitation. XY water velocity also changes to due to a temporal aspect, which is also reflected here.
+    
+    // water velocity delta = (-1/water_velocity_tau) * (water velocity state) for first order markov process limits
+    // if dv_dp = 1 sigma change in water velocity with distance (e.g. 0.1m/s / 100 m), then total change uncertainty = dv_dp * v * dt
+    // water velocity delta covariance = time based covariance + position change based covariance
+    
+    WaterVelocityType::vectorized_type water_velocity_delta = (-1.0/filter_parameter.water_velocity_tau) *
+    (Eigen::Map< const WaterVelocityType::vectorized_type >( state.water_velocity.data() ) ) ;
+    new_state.water_velocity.boxplus(water_velocity_delta, delta_time);
+    
+    WaterVelocityType::vectorized_type water_velocity_below_delta = (-1.0/filter_parameter.water_velocity_tau) *
+    (Eigen::Map< const WaterVelocityType::vectorized_type >( state.water_velocity_below.data() ) ) ;
+    new_state.water_velocity_below.boxplus(water_velocity_below_delta, delta_time);
+    
+    WaterVelocityType::vectorized_type bias_adcp_delta = (-1.0/filter_parameter.adcp_bias_tau) *
+    (Eigen::Map< const WaterVelocityType::vectorized_type >( state.bias_adcp.data() ) ) ;
+    new_state.bias_adcp.boxplus(bias_adcp_delta, delta_time);
+    
     return new_state;
 }
 
@@ -88,6 +108,26 @@ measurementAcceleration(const FilterState &state)
 }
 
 template <typename FilterState>
+WaterVelocityType
+measurementWaterCurrents(const FilterState &state, double cell_weighting)
+{
+    // returns expected water current measurements in the IMU frame
+    Eigen::Vector3d water_velocity_below;
+    water_velocity_below << state.water_velocity_below[0], state.water_velocity_below[1], 0; 
+    water_velocity_below = state.orientation.inverse() * ((Eigen::Vector3d)state.velocity - water_velocity_below);
+
+    Eigen::Vector3d water_velocity;
+    water_velocity << state.water_velocity[0], state.water_velocity[1], 0; 
+    water_velocity = state.orientation.inverse() * ((Eigen::Vector3d)state.velocity - water_velocity);
+            
+    WaterVelocityType expected_measurement;
+    expected_measurement[0] = cell_weighting * water_velocity_below[0] + (1-cell_weighting) * water_velocity[0] + state.bias_adcp[0];
+    expected_measurement[1] = cell_weighting * water_velocity_below[1] + (1-cell_weighting) * water_velocity[1] + state.bias_adcp[1];
+
+    return expected_measurement;
+}
+
+template <typename FilterState>
 Eigen::Matrix<TranslationType::scalar, 3, 1>
 measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model::DynamicModel> dynamic_model,
                    const Eigen::Vector3d& imu_in_body, const Eigen::Vector3d& rotation_rate_body, const Eigen::Quaterniond& orientation)
@@ -98,10 +138,17 @@ measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model
     params.damping_matrices[0].block(0,5,2,1) = state.lin_damping.block(0,2,2,1).cwiseAbs();
     params.damping_matrices[1].block(0,0,2,2) = state.quad_damping.block(0,0,2,2).cwiseAbs();
     params.damping_matrices[1].block(0,5,2,1) = state.quad_damping.block(0,2,2,1).cwiseAbs();
+       
     dynamic_model->setUWVParameters(params);
 
     // assume center of rotation to be the body frame
-    Eigen::Vector3d velocity_body = orientation.inverse() * state.velocity - rotation_rate_body.cross(imu_in_body);
+    Eigen::Vector3d water_velocity;
+    water_velocity[0] = state.water_velocity[0];
+    water_velocity[1] = state.water_velocity[1];
+    water_velocity[2] = 0; // start with the assumption of zero water current velocity in the Z
+    
+    Eigen::Vector3d velocity_body = orientation.inverse() * (state.velocity) - rotation_rate_body.cross(imu_in_body);
+    velocity_body = velocity_body - orientation.inverse() * water_velocity;
     base::Vector6d velocity_6d;
     velocity_6d << velocity_body, rotation_rate_body;
 
@@ -115,6 +162,33 @@ measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model
 
     // returns the expected linear body efforts given the current state
     return efforts.head<3>();
+}
+
+//functions for innovation gate test, using mahalanobis distance
+template <typename scalar_type>
+static bool d2p99(const scalar_type &mahalanobis2)
+{
+    if(mahalanobis2>9.21) // for 2 degrees of freedom, 99% likelihood = 9.21, https://www.uam.es/personal_pdi/ciencias/anabz/Prest/Trabajos/Critical_Values_of_the_Chi-Squared_Distribution.pdf
+    {
+        return false;
+    }
+    else
+    {
+        return true;
+    }
+}
+
+template <typename scalar_type>
+static bool d2p95(const scalar_type &mahalanobis2)
+{
+    if(mahalanobis2>5.991) // for 2 degrees of freedom, 95% likelihood = 5.991, https://www.uam.es/personal_pdi/ciencias/anabz/Prest/Trabajos/Critical_Values_of_the_Chi-Squared_Distribution.pdf
+    {
+        return false;
+    }
+    else
+    {
+        return true;
+    }
 }
 
 PoseUKF::PoseUKF(const State& initial_state, const Covariance& state_cov,
@@ -141,8 +215,18 @@ void PoseUKF::predictionStepImpl(double delta_t)
     Covariance process_noise = process_noise_cov;
     // uncertainty matrix calculations
     MTK::subblock(process_noise, &State::orientation) = rot * MTK::subblock(process_noise_cov, &State::orientation) * rot.transpose();
+    
+    Eigen::Vector3d scaled_velocity = ukf->mu().velocity;
+    scaled_velocity[2] = 10*scaled_velocity[2]; // scale Z velocity to have 10x more impact
+    
+    MTK::subblock(process_noise, &State::water_velocity) = MTK::subblock(process_noise_cov, &State::water_velocity) 
+    + Eigen::Matrix<double,2,2>::Identity() * filter_parameter.water_velocity_scale * scaled_velocity.squaredNorm() * delta_t;
+    
+    MTK::subblock(process_noise, &State::water_velocity_below) = MTK::subblock(process_noise_cov, &State::water_velocity_below) 
+    + Eigen::Matrix<double,2,2>::Identity() * filter_parameter.water_velocity_scale * scaled_velocity.squaredNorm() * delta_t;
+        
     process_noise = pow(delta_t, 2.) * process_noise;
-
+    
     ukf->predict(boost::bind(processModel<WState>, _1, rotation_rate, projection, lin_damping_offset, quad_damping_offset, filter_parameter, delta_t),
                  MTK_UKF::cov(process_noise));
 }
@@ -157,13 +241,13 @@ void PoseUKF::integrateMeasurement(const Velocity& velocity)
     {
         ukf->update(velocity.mu, boost::bind(measurementVelocity<State>, _1),
             boost::bind(ukfom::id< Velocity::Cov >, velocity.cov),
-            ukfom::accept_any_mahalanobis_distance<State::scalar>);
+            d2p99<State::scalar>);
     }
     else
     {
         ukf->update(velocity.mu, boost::bind(measurementVelocityConstantOrientation<State>, _1, ukf->mu().orientation),
             boost::bind(ukfom::id< Velocity::Cov >, velocity.cov),
-            ukfom::accept_any_mahalanobis_distance<State::scalar>);
+            d2p99<State::scalar>);
     }
 }
 
@@ -194,7 +278,7 @@ void PoseUKF::integrateMeasurement(const XY_Position& xy_position)
     checkMeasurment(xy_position.mu, xy_position.cov);
     ukf->update(xy_position.mu, boost::bind(measurementXYPosition<State>, _1),
                 boost::bind(ukfom::id< XY_Position::Cov >, xy_position.cov),
-                ukfom::accept_any_mahalanobis_distance<State::scalar>);
+                d2p95<State::scalar>);
 }
 
 void PoseUKF::integrateMeasurement(const GeographicPosition& geo_position, const Eigen::Vector3d& gps_in_body)
@@ -208,7 +292,7 @@ void PoseUKF::integrateMeasurement(const GeographicPosition& geo_position, const
 
     ukf->update(projected_position, boost::bind(measurementXYPosition<State>, _1),
                 boost::bind(ukfom::id< XY_Position::Cov >, geo_position.cov),
-                ukfom::accept_any_mahalanobis_distance<State::scalar>);
+                d2p95<State::scalar>);
 }
 
 void PoseUKF::integrateMeasurement(const BodyEffortsMeasurement& body_efforts)
@@ -218,6 +302,15 @@ void PoseUKF::integrateMeasurement(const BodyEffortsMeasurement& body_efforts)
     ukf->update(body_efforts.mu, boost::bind(measurementEfforts<State>, _1, dynamic_model, filter_parameter.imu_in_body, getRotationRate(), ukf->mu().orientation),
                 boost::bind(ukfom::id< BodyEffortsMeasurement::Cov >, body_efforts.cov),
                 ukfom::accept_any_mahalanobis_distance<State::scalar>);
+}
+
+void PoseUKF::integrateMeasurement(const WaterVelocityMeasurement& adcp_measurements, double cell_weighting)
+{
+    checkMeasurment(adcp_measurements.mu, adcp_measurements.cov);
+    
+    ukf->update(adcp_measurements.mu, boost::bind(measurementWaterCurrents<State>, _1, cell_weighting),
+        boost::bind(ukfom::id< WaterVelocityMeasurement::Cov >, adcp_measurements.cov),
+        d2p95<State::scalar>);
 }
 
 PoseUKF::RotationRate::Mu PoseUKF::getRotationRate()
