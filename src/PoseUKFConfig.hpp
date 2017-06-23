@@ -8,14 +8,28 @@ namespace uwv_kalman_filters
 
 struct WaterVelocityParameters
 {
-    double tau; // time scale for water current change
+    /* time scale for water current change */
+    double tau;
 
-    double limits; // limits of the water current change from temporal change
+    /* limits of the water current change from temporal change */
+    double limits;
 
-    double scale; // rate change of currents based on spatial change
+    /* rate change of currents based on spatial change */
+    double scale;
 
-    double adcp_bias_tau; 
+    /* Water current cell size in meter */
+    double cell_size;
 
+    /* Water current first cell blank in meter */
+    double first_cell_blank;
+
+    /* Minimum correltation of ADCP measurements */
+    double minimum_correlation;
+
+    /* Time scale for change of ADCP bias in seconds */
+    double adcp_bias_tau;
+
+    /* ADCP bias standard deviation */
     double adcp_bias_limits;
 };
 
