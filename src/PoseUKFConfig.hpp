@@ -81,6 +81,9 @@ struct PoseUKFConfig
     /** Noise parameter for the dynamic motion model */
     DynamicModelNoiseParameters model_noise_parameters;
 
+    /* Water velocity parameters */
+    WaterVelocityParameters water_velocity;
+
     /* Latitude and Longitude of operational area */
     LocationConfiguration location;
 
