@@ -236,7 +236,7 @@ void PoseUKF::integrateMeasurement(const Velocity& velocity)
     checkMeasurment(velocity.mu, velocity.cov);
     ukf->update(velocity.mu, boost::bind(measurementVelocity<State>, _1),
         boost::bind(ukfom::id< Velocity::Cov >, velocity.cov),
-        d2p99<State::scalar>);
+        ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }
 
 void PoseUKF::integrateMeasurement(const Acceleration& acceleration)
