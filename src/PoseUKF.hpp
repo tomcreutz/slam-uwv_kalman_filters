@@ -29,6 +29,7 @@ public:
         Eigen::Vector3d imu_in_body;
         double gyro_bias_tau;
         double acc_bias_tau;
+        double inertia_tau;
         double lin_damping_tau;
         double quad_damping_tau;
         double heading_converged_std;
@@ -90,6 +91,7 @@ protected:
     boost::shared_ptr<pose_estimation::GeographicProjection> projection;
     RotationRate::Mu rotation_rate;
     PoseUKFParameter filter_parameter;
+    InertiaType::vectorized_type inertia_offset;
     LinDampingType::vectorized_type lin_damping_offset;
     QuadDampingType::vectorized_type quad_damping_offset;
 };

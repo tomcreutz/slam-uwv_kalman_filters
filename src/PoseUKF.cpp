@@ -13,6 +13,7 @@ template <typename FilterState>
 FilterState
 processModel(const FilterState &state, const Eigen::Vector3d& rotation_rate,
              boost::shared_ptr<pose_estimation::GeographicProjection> projection,
+             const InertiaType::vectorized_type& inertia_offset,
              const LinDampingType::vectorized_type& lin_damping_offset,
              const QuadDampingType::vectorized_type& quad_damping_offset,
              const PoseUKF::PoseUKFParameter& filter_parameter, double delta_time)
@@ -38,6 +39,10 @@ processModel(const FilterState &state, const Eigen::Vector3d& rotation_rate,
     Eigen::Vector3d acc_bias_delta = (-1.0/filter_parameter.acc_bias_tau) * state.bias_acc;
     new_state.bias_acc.boxplus(acc_bias_delta, delta_time);
 
+    InertiaType::vectorized_type inertia_delta = (-1.0/filter_parameter.inertia_tau) *
+                        (Eigen::Map< const InertiaType::vectorized_type >(state.inertia.data()) - inertia_offset);
+    new_state.inertia.boxplus(inertia_delta, delta_time);
+
     LinDampingType::vectorized_type lin_damping_delta = (-1.0/filter_parameter.lin_damping_tau) *
                         (Eigen::Map< const LinDampingType::vectorized_type >(state.lin_damping.data()) - lin_damping_offset);
     new_state.lin_damping.boxplus(lin_damping_delta, delta_time);
@@ -54,15 +59,15 @@ processModel(const FilterState &state, const Eigen::Vector3d& rotation_rate,
     // water velocity delta covariance = time based covariance + position change based covariance
     
     WaterVelocityType::vectorized_type water_velocity_delta = (-1.0/filter_parameter.water_velocity_tau) *
-    (Eigen::Map< const WaterVelocityType::vectorized_type >( state.water_velocity.data() ) ) ;
+                        (Eigen::Map< const WaterVelocityType::vectorized_type >( state.water_velocity.data() ) ) ;
     new_state.water_velocity.boxplus(water_velocity_delta, delta_time);
     
     WaterVelocityType::vectorized_type water_velocity_below_delta = (-1.0/filter_parameter.water_velocity_tau) *
-    (Eigen::Map< const WaterVelocityType::vectorized_type >( state.water_velocity_below.data() ) ) ;
+                        (Eigen::Map< const WaterVelocityType::vectorized_type >( state.water_velocity_below.data() ) ) ;
     new_state.water_velocity_below.boxplus(water_velocity_below_delta, delta_time);
     
     WaterVelocityType::vectorized_type bias_adcp_delta = (-1.0/filter_parameter.adcp_bias_tau) *
-    (Eigen::Map< const WaterVelocityType::vectorized_type >( state.bias_adcp.data() ) ) ;
+                        (Eigen::Map< const WaterVelocityType::vectorized_type >( state.bias_adcp.data() ) ) ;
     new_state.bias_adcp.boxplus(bias_adcp_delta, delta_time);
     
     return new_state;
@@ -126,6 +131,8 @@ measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model
 {
     // set damping parameters
     uwv_dynamic_model::UWVParameters params = dynamic_model->getUWVParameters();
+    params.inertia_matrix.block(0,0,2,2) = state.inertia.block(0,0,2,2).cwiseAbs();
+    params.inertia_matrix.block(0,5,2,1) = state.inertia.block(0,2,2,1).cwiseAbs();
     params.damping_matrices[0].block(0,0,2,2) = state.lin_damping.block(0,0,2,2).cwiseAbs();
     params.damping_matrices[0].block(0,5,2,1) = state.lin_damping.block(0,2,2,1).cwiseAbs();
     params.damping_matrices[1].block(0,0,2,2) = state.quad_damping.block(0,0,2,2).cwiseAbs();
@@ -194,6 +201,7 @@ PoseUKF::PoseUKF(const State& initial_state, const Covariance& state_cov,
     dynamic_model.reset(new uwv_dynamic_model::DynamicModel());
     dynamic_model->setUWVParameters(model_parameters);
 
+    inertia_offset = Eigen::Map< const InertiaType::vectorized_type >(initial_state.inertia.data());
     lin_damping_offset = Eigen::Map< const LinDampingType::vectorized_type >(initial_state.lin_damping.data());
     quad_damping_offset = Eigen::Map< const QuadDampingType::vectorized_type >(initial_state.quad_damping.data());
 
@@ -219,7 +227,7 @@ void PoseUKF::predictionStepImpl(double delta_t)
         
     process_noise = pow(delta_t, 2.) * process_noise;
     
-    ukf->predict(boost::bind(processModel<WState>, _1, rotation_rate, projection, lin_damping_offset, quad_damping_offset, filter_parameter, delta_t),
+    ukf->predict(boost::bind(processModel<WState>, _1, rotation_rate, projection, inertia_offset, lin_damping_offset, quad_damping_offset, filter_parameter, delta_t),
                  MTK_UKF::cov(process_noise));
 }
 
