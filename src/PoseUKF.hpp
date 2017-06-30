@@ -75,7 +75,7 @@ public:
     void integrateMeasurement(const Velocity& velocity);
 
     /* Linear efforts in the body frame */
-    void integrateMeasurement(const BodyEffortsMeasurement& body_efforts);
+    void integrateMeasurement(const BodyEffortsMeasurement& body_efforts, bool only_affect_velocity = false);
    
     /* Water Velocities from ADCP expressed in the IMU frame */
     void integrateMeasurement(const WaterVelocityMeasurement& adcp_measurements, double cell_weighting);

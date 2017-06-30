@@ -163,6 +163,29 @@ measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model
     return efforts.head<3>();
 }
 
+/* This measurement model allows to constrain the velocity based on the motion model in the absence of effort measurements */
+template <typename FilterState>
+Eigen::Matrix<TranslationType::scalar, 3, 1>
+constrainVelocity(const FilterState &state, boost::shared_ptr<uwv_dynamic_model::DynamicModel> dynamic_model,
+                   const Eigen::Vector3d& imu_in_body, const Eigen::Vector3d& rotation_rate_body,
+                   const Eigen::Vector3d& water_velocity, const Eigen::Quaterniond& orientation,
+                   const Eigen::Vector3d& acceleration_body)
+{
+    Eigen::Vector3d velocity_body = orientation.inverse() * (state.velocity) - rotation_rate_body.cross(imu_in_body);
+    velocity_body -= orientation.inverse() * water_velocity;
+    base::Vector6d velocity_6d;
+    velocity_6d << velocity_body, rotation_rate_body;
+
+    base::Vector6d acceleration_6d;
+    // assume the angular acceleration to be zero
+    acceleration_6d << acceleration_body, base::Vector3d::Zero();
+
+    base::Vector6d efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, orientation);
+
+    // returns the expected linear body efforts given the current state
+    return efforts.head<3>();
+}
+
 //functions for innovation gate test, using mahalanobis distance
 template <typename scalar_type>
 static bool d2p99(const scalar_type &mahalanobis2)
@@ -227,7 +250,9 @@ void PoseUKF::predictionStepImpl(double delta_t)
         
     process_noise = pow(delta_t, 2.) * process_noise;
     
-    ukf->predict(boost::bind(processModel<WState>, _1, rotation_rate, projection, inertia_offset, lin_damping_offset, quad_damping_offset, filter_parameter, delta_t),
+    ukf->predict(boost::bind(processModel<WState>, _1, rotation_rate, projection,
+                            inertia_offset, lin_damping_offset, quad_damping_offset,
+                            filter_parameter, delta_t),
                  MTK_UKF::cov(process_noise));
 }
 
@@ -283,13 +308,30 @@ void PoseUKF::integrateMeasurement(const GeographicPosition& geo_position, const
                 d2p95<State::scalar>);
 }
 
-void PoseUKF::integrateMeasurement(const BodyEffortsMeasurement& body_efforts)
+void PoseUKF::integrateMeasurement(const BodyEffortsMeasurement& body_efforts, bool only_affect_velocity)
 {
     checkMeasurment(body_efforts.mu, body_efforts.cov);
 
-    ukf->update(body_efforts.mu, boost::bind(measurementEfforts<State>, _1, dynamic_model, filter_parameter.imu_in_body, getRotationRate()),
-                boost::bind(ukfom::id< BodyEffortsMeasurement::Cov >, body_efforts.cov),
-                ukfom::accept_any_mahalanobis_distance<State::scalar>);
+    if(only_affect_velocity)
+    {
+        // this allows to contstrain only the velocity using the motion model
+        Eigen::Vector3d water_velocity(ukf->mu().water_velocity.x(), ukf->mu().water_velocity.y(), 0.);
+        Eigen::Vector3d rotation_rate_body = getRotationRate();
+        // assume center of rotation to be the body frame
+        Eigen::Vector3d acceleration_body = ukf->mu().orientation.inverse() * ukf->mu().acceleration - rotation_rate_body.cross(rotation_rate_body.cross(filter_parameter.imu_in_body));
+        ukf->update(body_efforts.mu, boost::bind(constrainVelocity<State>, _1, dynamic_model,
+                                        filter_parameter.imu_in_body, rotation_rate_body, water_velocity,
+                                        ukf->mu().orientation, acceleration_body),
+                    boost::bind(ukfom::id< BodyEffortsMeasurement::Cov >, body_efforts.cov),
+                    ukfom::accept_any_mahalanobis_distance<State::scalar>);
+    }
+    else
+    {
+        ukf->update(body_efforts.mu, boost::bind(measurementEfforts<State>, _1, dynamic_model, filter_parameter.imu_in_body,
+                                                 getRotationRate()),
+                    boost::bind(ukfom::id< BodyEffortsMeasurement::Cov >, body_efforts.cov),
+                    ukfom::accept_any_mahalanobis_distance<State::scalar>);
+    }
 }
 
 void PoseUKF::integrateMeasurement(const WaterVelocityMeasurement& adcp_measurements, double cell_weighting)
