@@ -125,7 +125,7 @@ measurementWaterCurrents(const FilterState &state, double cell_weighting)
 }
 
 template <typename FilterState>
-Eigen::Matrix<TranslationType::scalar, 3, 1>
+Eigen::Matrix<TranslationType::scalar, 6, 1>
 measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model::DynamicModel> dynamic_model,
                    const Eigen::Vector3d& imu_in_body, const Eigen::Vector3d& rotation_rate_body)
 {
@@ -159,13 +159,13 @@ measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model
 
     base::Vector6d efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, state.orientation);
 
-    // returns the expected linear body efforts given the current state
-    return efforts.head<3>();
+    // returns the expected forces and torques given the current state
+    return efforts;
 }
 
 /* This measurement model allows to constrain the velocity based on the motion model in the absence of effort measurements */
 template <typename FilterState>
-Eigen::Matrix<TranslationType::scalar, 3, 1>
+Eigen::Matrix<TranslationType::scalar, 6, 1>
 constrainVelocity(const FilterState &state, boost::shared_ptr<uwv_dynamic_model::DynamicModel> dynamic_model,
                    const Eigen::Vector3d& imu_in_body, const Eigen::Vector3d& rotation_rate_body,
                    const Eigen::Vector3d& water_velocity, const Eigen::Quaterniond& orientation,
@@ -182,8 +182,8 @@ constrainVelocity(const FilterState &state, boost::shared_ptr<uwv_dynamic_model:
 
     base::Vector6d efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, orientation);
 
-    // returns the expected linear body efforts given the current state
-    return efforts.head<3>();
+    // returns the expected forces and torques given the current state
+    return efforts;
 }
 
 //functions for innovation gate test, using mahalanobis distance

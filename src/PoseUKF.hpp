@@ -45,7 +45,7 @@ public:
     MEASUREMENT(RotationRate, 3)
     MEASUREMENT(Acceleration, 3)
     MEASUREMENT(Velocity, 3)
-    MEASUREMENT(BodyEffortsMeasurement, 3)
+    MEASUREMENT(BodyEffortsMeasurement, 6)
     MEASUREMENT(WaterVelocityMeasurement, 2)
 
 public:

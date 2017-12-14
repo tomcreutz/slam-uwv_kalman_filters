@@ -53,8 +53,9 @@ struct InertialNoiseParameters
 
 struct DynamicModelNoiseParameters
 {
-    /* Standard deviation of linear body effort measurements (N/sqrt(Hz)) */
-    base::Vector3d body_efforts_std;
+    /* Standard deviation of body effort measurements.
+     * Forces in (N/sqrt(Hz)) and torques in (Nm/sqrt(Hz)) */
+    base::Vector6d body_efforts_std;
 
     /* Moment of inertia instability (kg*m^2)
      * The instability is mapped to the x, yx, xy, y, xψ, yψ components of
@@ -116,12 +117,12 @@ struct PoseUKFConfig
     /** Max change of acceleration in m/s^3 */
     base::Vector3d max_jerk;
 
-    /** Max effort in N
+    /** Max effort in N and Nm
      * This is used to define the uncertainty of
      * unknown effort measurements.
      * E.g. if the AUV is on the surface.
      */
-    base::Vector3d max_effort;
+    base::Vector6d max_effort;
 
     /* Minimum depth of the AUV to apply the dynamic model  */
     double dynamic_model_min_depth;
