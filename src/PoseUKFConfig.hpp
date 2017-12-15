@@ -15,7 +15,7 @@ struct WaterVelocityParameters
     double limits;
 
     /* Standard deviation of the water velocity measurements ((m/s)/sqrt(Hz)) */
-    base::Vector2d measurement_std;
+    base::Vector3d measurement_std;
 
     /* rate change of currents based on spatial change */
     double scale;
