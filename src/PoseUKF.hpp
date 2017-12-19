@@ -32,11 +32,10 @@ public:
         double inertia_tau;
         double lin_damping_tau;
         double quad_damping_tau;
-        double heading_converged_std;
         double water_velocity_tau; // time constant for water currents
         double water_velocity_limits; //long term 1 sigma bounds for currents
         double water_velocity_scale; // spatial scale for water current change in m/s / m
-        double adcp_bias_tau; 
+        double adcp_bias_tau;
     };
 
     MEASUREMENT(GeographicPosition, 2)
