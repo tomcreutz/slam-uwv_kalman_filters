@@ -1,12 +1,18 @@
 uwv_kalman_filters
 =============
-Collection of filters for the underwater vehicle context
 
+VelocityUKF
+---
+The focus of the VelocityUKF is to provide a model-aided linear and angular velocity estimate.  Due to the model-aiding the velocities can be provided in a high frequency.
+
+PoseUKF
+---
+The PoseUKF is a model aided inertial localization solution for autonomous underwater vehicles. As minimal input the filter relays on rotation rates and accelerations from an IMU and velocities from a DVL.  Given force and torque measurements an AUV motion model aids the velocity estimate during DVL drop outs.  ADCP measurements further aid the estimation in cases of DVL bottom-lock loss. Given gyroscopes capable of sensing the rotation of the earth (e.g. a fiber optic gyro) the filter is able to estimate it's true heading.
 
 
 License
 -------
-dummy-license
+BSD 3-Clause License
 
 Installation
 ------------
@@ -33,6 +39,7 @@ processes and simplify reuse of this project. Following these rules ensures that
 the Rock CMake macros automatically handle the project's build process and
 install setup properly.
 
+```
 STRUCTURE
 -- src/ 
 	Contains all header (*.h/*.hpp) and source files
@@ -53,3 +60,4 @@ STRUCTURE
 	easily embedded include the external software directly here
 -- doc/
 	should contain the existing doxygen file: doxygen.conf
+```
