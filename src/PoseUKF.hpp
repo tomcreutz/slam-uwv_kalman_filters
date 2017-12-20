@@ -21,6 +21,20 @@ namespace pose_estimation
 namespace uwv_kalman_filters
 {
 
+/**
+ * This implements a full model aided inertial localization solution for autonomous underwater vehicles.
+ *
+ * As minimal input the filter relays on rotation rates and accelerations from an IMU and velocities from a DVL.
+ * Given force and torque measurements an AUV motion model aids the velocity estimate during DVL drop outs.
+ * ADCP measurements further aid the estimation in cases of DVL bottom-lock loss.
+ * Given gyroscopes capable of sensing the rotation of the earth (e.g. a fiber optic gyro)
+ * this filter is able to estimate it's true heading.
+ *
+ * NOTE: In this filter the IMU frame is, in order to keep a certain algorithmic simplicity,
+ * not considered to be rotated with respect to the body frame.
+ * Rotation rates and acceleration, as well as the corresponding configuration parameters
+ * therefore would need to be rotated to the body frame before integrating them in this filter.
+ */
 class PoseUKF : public pose_estimation::UnscentedKalmanFilter<PoseState>
 {
 public:
@@ -73,7 +87,7 @@ public:
     /* Velocities expressed in the IMU frame */
     void integrateMeasurement(const Velocity& velocity);
 
-    /* Linear efforts in the body frame */
+    /* Forces and torques in the body frame */
     void integrateMeasurement(const BodyEffortsMeasurement& body_efforts, bool only_affect_velocity = false);
    
     /* Water Velocities from ADCP expressed in the IMU frame */

@@ -26,6 +26,10 @@ MTK_BUILD_MANIFOLD(VelocityState,
    ((ZPosType, z_position))
 )
 
+/**
+ * The focus of this filter is to provide a model-aided linear and angular velocity estimate.
+ * Due to the model-aiding the velocities can be provided in a high frequency.
+ */
 class VelocityUKF : public pose_estimation::UnscentedKalmanFilter<VelocityState>
 {
 public:
@@ -38,11 +42,19 @@ public:
     VelocityUKF(const State& initial_state, const Covariance& state_cov);
     virtual ~VelocityUKF() {}
 
+    /** Set AUV motion model parameters */
     bool setupMotionModel(const uwv_dynamic_model::UWVParameters& parameters);
 
+    /** Velocity of the AUV */
     void integrateMeasurement(const DVLMeasurement& measurement);
+
+    /** Rotation rates of the AUV */
     void integrateMeasurement(const GyroMeasurement& measurement);
+
+    /** Forces and torques in the body frame */
     void integrateMeasurement(const BodyEffortsMeasurement& measurement);
+
+    /** Altitude to the AUV */
     void integrateMeasurement(const PressureMeasurement& measurement);
 
 protected:
