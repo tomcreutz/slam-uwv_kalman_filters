@@ -1,0 +1,39 @@
+- git:
+    local-name: sisl
+    uri: git@github.com:saarnold/SISL.git
+
+- git:
+    local-name: rock-cmake
+    uri: git@github.com:saarnold/base-cmake.git
+
+- git:
+    local-name: rock-types
+    uri: git@github.com:saarnold/base-types.git
+
+- git:
+    local-name: rock-logging
+    uri: git@github.com:saarnold/base-logging.git
+
+- git:
+    local-name: rock-aggregator
+    uri: git@github.com:saarnold/drivers-aggregator.git
+
+- git:
+    local-name: uwv_dynamic_model
+    uri: git@github.com:saarnold/control-uwv_dynamic_model.git
+
+- git:
+    local-name: mtk
+    uri: git@github.com:rock-slam/slam-mtk.git
+    version: ros_package_xml
+
+- git:
+    local-name: pose_estimation
+    uri: git@github.com:rock-slam/slam-pose_estimation.git
+    version: ros_package_xml
+
+- git:
+    local-name: uwv_kalman_filters
+    uri: git@github.com:rock-slam/slam-uwv_kalman_filters.git
+    version: ros_package_xml
+

@@ -1,0 +1,28 @@
+<package format="2">
+  <name>uwv_kalman_filters</name>
+  <version>0.5.0</version>
+  <description>A collection of pose filters for underwater vehicles.</description>
+
+  <maintainer email="sascha.arnold@dfki.de">Sascha Arnold</maintainer>
+  <author     email="sascha.arnold@dfki.de">Sascha Arnold</author>
+
+  <license>BSD 3-Clause</license>
+
+  <buildtool_depend>cmake</buildtool_depend>
+
+  <build_depend>rock-cmake</build_depend>
+  <build_depend>pkg-config</build_depend>
+
+  <depend>boost</depend>
+  <depend>rock-types</depend>
+  <depend>mtk</depend>
+  <depend>uwv_dynamic_model</depend>
+  <depend>pose_estimation</depend>
+
+  <doc_depend>doxygen</doc_depend>
+
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>
+
