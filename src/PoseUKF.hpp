@@ -41,7 +41,9 @@ public:
     struct PoseUKFParameter
     {
         Eigen::Vector3d imu_in_body;
+        Eigen::Vector3d gyro_bias_offset;
         double gyro_bias_tau;
+        Eigen::Vector3d acc_bias_offset;
         double acc_bias_tau;
         double inertia_tau;
         double lin_damping_tau;

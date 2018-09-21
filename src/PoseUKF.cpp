@@ -33,10 +33,12 @@ processModel(const FilterState &state, const Eigen::Vector3d& rotation_rate,
     // apply acceleration
     new_state.velocity.boxplus(state.acceleration, delta_time);
 
-    Eigen::Vector3d gyro_bias_delta = (-1.0/filter_parameter.gyro_bias_tau) * state.bias_gyro;
+    Eigen::Vector3d gyro_bias_delta = (-1.0/filter_parameter.gyro_bias_tau) *
+                        (Eigen::Vector3d(state.bias_gyro) - filter_parameter.gyro_bias_offset);
     new_state.bias_gyro.boxplus(gyro_bias_delta, delta_time);
 
-    Eigen::Vector3d acc_bias_delta = (-1.0/filter_parameter.acc_bias_tau) * state.bias_acc;
+    Eigen::Vector3d acc_bias_delta = (-1.0/filter_parameter.acc_bias_tau) *
+                        (Eigen::Vector3d(state.bias_acc) - filter_parameter.acc_bias_offset);
     new_state.bias_acc.boxplus(acc_bias_delta, delta_time);
 
     InertiaType::vectorized_type inertia_delta = (-1.0/filter_parameter.inertia_tau) *
