@@ -97,6 +97,40 @@ struct LocationConfiguration
     double altitude;
 };
 
+struct VisualLandmark
+{
+    /* Unique ID of the marker */
+    std::string marker_id;
+    /* Size of the marker in meter (Usually the edge length of a squared marker) */
+    double marker_size;
+    /* Position of the marker in the navigation frame */
+    base::Vector3d marker_position;
+    /* Orientation of the marker in the navigation frame in euler angles */
+    base::Vector3d marker_euler_orientation;
+    /* Standard deviation of the marker pose */
+    base::Vector6d marker_pose_std;
+};
+
+struct CameraConfiguration
+{
+    /* focal length in x and y direction */
+    double fx, fy;
+    /* optical center in x and y direction  */
+    double cx, cy;
+};
+
+struct VisualLandmarkConfiguration
+{
+    /* Camera configuration */
+    CameraConfiguration camera_config;
+    /* Standard deviation of a image feature measurement in pixels */
+    base::Vector2d feature_std;
+    /* Feature positions in the marker frame. Each position will be scaled by half of the marker size */
+    std::vector<base::Vector3d> unit_feature_positions;
+    /* Known landmarks */
+    std::vector<VisualLandmark> landmarks;
+};
+
 struct PoseUKFConfig
 {
     /* Inerial noise parameters for acceleration */
@@ -113,6 +147,9 @@ struct PoseUKFConfig
 
     /* Latitude and Longitude of operational area */
     LocationConfiguration location;
+
+    /* Visual landmark configuration */
+    VisualLandmarkConfiguration visual_landmarks;
 
     /** Max change of acceleration in m/s^3 */
     base::Vector3d max_jerk;

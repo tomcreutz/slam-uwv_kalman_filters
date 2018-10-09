@@ -188,6 +188,33 @@ constrainVelocity(const FilterState &state, boost::shared_ptr<uwv_dynamic_model:
     return efforts;
 }
 
+/**
+ * Augments the pose filter state with a marker pose.
+ * This allows to take the uncertainty of the marker pose into account.
+ */
+MTK_BUILD_MANIFOLD(PoseStateWithMarker,
+   ((ukfom::mtkwrap<PoseState>, filter_state))
+   ((TranslationType, marker_position)) // position of a marker in navigation frame
+   ((RotationType, marker_orientation)) // orientation of a marker in navigation frame
+)
+typedef ukfom::mtkwrap<PoseStateWithMarker> WPoseStateWithMarker;
+typedef Eigen::Matrix<PoseStateWithMarker::scalar, PoseStateWithMarker::DOF, PoseStateWithMarker::DOF> PoseStateWithMarkerCov;
+
+template <typename FilterState>
+Eigen::Matrix<TranslationType::scalar, 2, 1>
+measurementVisualLandmark(const FilterState &state, const CameraConfiguration &camera_config,
+                          const Eigen::Vector3d& feature_pos, const Eigen::Affine3d& cam_in_imu)
+{
+    Eigen::Affine3d imu_in_nav = Eigen::Affine3d(state.filter_state.orientation);
+    imu_in_nav.translation() = state.filter_state.position;
+    Eigen::Affine3d nav_in_cam = (imu_in_nav * cam_in_imu).inverse();
+
+    Eigen::Vector3d feature_in_cam = nav_in_cam * (state.marker_orientation * feature_pos + state.marker_position);
+
+    return Eigen::Vector2d(camera_config.fx * feature_in_cam.x() / feature_in_cam.z() + camera_config.cx,
+                           camera_config.fy * feature_in_cam.y() / feature_in_cam.z() + camera_config.cy);
+}
+
 //functions for innovation gate test, using mahalanobis distance
 template <typename scalar_type>
 static bool d2p99(const scalar_type &mahalanobis2)
@@ -343,6 +370,36 @@ void PoseUKF::integrateMeasurement(const WaterVelocityMeasurement& adcp_measurem
     ukf->update(adcp_measurements.mu, boost::bind(measurementWaterCurrents<State>, _1, cell_weighting),
         boost::bind(ukfom::id< WaterVelocityMeasurement::Cov >, adcp_measurements.cov),
         d2p95<State::scalar>);
+}
+
+void PoseUKF::integrateMeasurement(const std::vector<VisualFeatureMeasurement>& marker_corners,
+                                   const std::vector<Eigen::Vector3d>& feature_positions,
+                                   const Eigen::Affine3d& marker_pose, const Eigen::Matrix<double,6,6> cov_marker_pose,
+                                   const CameraConfiguration& camera_config, const Eigen::Affine3d& camera_in_IMU)
+{
+    // Augment the filter state with the marker pose
+    WPoseStateWithMarker augmented_state;
+    augmented_state.filter_state = ukf->mu();
+    augmented_state.marker_position = TranslationType(marker_pose.translation());
+    augmented_state.marker_orientation = RotationType(MTK::SO3<double>(marker_pose.rotation()));
+    PoseStateWithMarkerCov augmented_state_cov = PoseStateWithMarkerCov::Zero();
+    augmented_state_cov.block(0,0, WState::DOF, WState::DOF) = ukf->sigma();
+    augmented_state_cov.bottomRightCorner<6,6>() = cov_marker_pose;
+    ukfom::ukf<WPoseStateWithMarker> augmented_ukf(augmented_state, augmented_state_cov);
+
+    // Apply measurements on the augmented state
+    for(unsigned i = 0; i < marker_corners.size() || i < feature_positions.size(); i++)
+    {
+        checkMeasurment(marker_corners[i].mu, marker_corners[i].cov);
+
+        augmented_ukf.update(marker_corners[i].mu, boost::bind(measurementVisualLandmark<WPoseStateWithMarker>, _1, camera_config, feature_positions[i], camera_in_IMU),
+            boost::bind(ukfom::id< VisualFeatureMeasurement::Cov >, marker_corners[i].cov),
+            ukfom::accept_any_mahalanobis_distance<WPoseStateWithMarker::scalar>);
+
+    }
+
+    // Reconstructing the filter is currently the only way to modify the internal state of the filter
+    ukf.reset(new MTK_UKF(augmented_ukf.mu().filter_state, augmented_ukf.sigma().block(0,0, WState::DOF, WState::DOF)));
 }
 
 PoseUKF::RotationRate::Mu PoseUKF::getRotationRate()

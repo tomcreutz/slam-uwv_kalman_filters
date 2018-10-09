@@ -62,6 +62,7 @@ public:
     MEASUREMENT(Velocity, 3)
     MEASUREMENT(BodyEffortsMeasurement, 6)
     MEASUREMENT(WaterVelocityMeasurement, 2)
+    MEASUREMENT(VisualFeatureMeasurement, 2)
 
 public:
     PoseUKF(const State& initial_state, const Covariance& state_cov,
@@ -94,6 +95,17 @@ public:
    
     /* Water Velocities from ADCP expressed in the IMU frame */
     void integrateMeasurement(const WaterVelocityMeasurement& adcp_measurements, double cell_weighting);
+
+    /**
+     * The features (usually the four corners) of a visual marker in undistorted image coordinates.
+     * |marker_features| and |feature_positions| musst be of equal size and order.
+     * @param marker_features image coordinates of the features in the undistorted image.
+     * @param feature_positions are the positions of the featues in the marker frame.
+     */
+    void integrateMeasurement(const std::vector< VisualFeatureMeasurement> &marker_features,
+                              const std::vector<Eigen::Vector3d>& feature_positions,
+                              const Eigen::Affine3d& marker_pose, const Eigen::Matrix<double,6,6> cov_marker_pose,
+                              const CameraConfiguration& camera_config, const Eigen::Affine3d& camera_in_IMU);
 
     /* Returns rotation rate in IMU frame */
     RotationRate::Mu getRotationRate();
