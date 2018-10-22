@@ -133,12 +133,18 @@ measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model
 {
     // set damping parameters
     uwv_dynamic_model::UWVParameters params = dynamic_model->getUWVParameters();
-    params.inertia_matrix.block(0,0,2,2) = state.inertia.block(0,0,2,2).cwiseAbs();
-    params.inertia_matrix.block(0,5,2,1) = state.inertia.block(0,2,2,1).cwiseAbs();
-    params.damping_matrices[0].block(0,0,2,2) = state.lin_damping.block(0,0,2,2).cwiseAbs();
-    params.damping_matrices[0].block(0,5,2,1) = state.lin_damping.block(0,2,2,1).cwiseAbs();
-    params.damping_matrices[1].block(0,0,2,2) = state.quad_damping.block(0,0,2,2).cwiseAbs();
-    params.damping_matrices[1].block(0,5,2,1) = state.quad_damping.block(0,2,2,1).cwiseAbs();
+    params.inertia_matrix.block(0,0,2,2) = state.inertia.block(0,0,2,2);
+    params.inertia_matrix.block(0,5,2,1) = state.inertia.block(0,2,2,1);
+    params.inertia_matrix.block(5,0,1,2) = state.inertia.block(2,0,1,2);
+    params.inertia_matrix.block(5,5,1,1) = state.inertia.block(2,2,1,1);
+    params.damping_matrices[0].block(0,0,2,2) = state.lin_damping.block(0,0,2,2);
+    params.damping_matrices[0].block(0,5,2,1) = state.lin_damping.block(0,2,2,1);
+    params.damping_matrices[0].block(5,0,1,2) = state.lin_damping.block(2,0,1,2);
+    params.damping_matrices[0].block(5,5,1,1) = state.lin_damping.block(2,2,1,1);
+    params.damping_matrices[1].block(0,0,2,2) = state.quad_damping.block(0,0,2,2);
+    params.damping_matrices[1].block(0,5,2,1) = state.quad_damping.block(0,2,2,1);
+    params.damping_matrices[1].block(5,0,1,2) = state.quad_damping.block(2,0,1,2);
+    params.damping_matrices[1].block(5,5,1,1) = state.quad_damping.block(2,2,1,1);
        
     dynamic_model->setUWVParameters(params);
 

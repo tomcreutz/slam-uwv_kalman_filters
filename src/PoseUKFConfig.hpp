@@ -58,22 +58,22 @@ struct DynamicModelNoiseParameters
     base::Vector6d body_efforts_std;
 
     /* Moment of inertia instability (kg*m^2)
-     * The instability is mapped to the x, yx, xy, y, xψ, yψ components of
+     * The instability is mapped to the xx, xy, xψ; yx, yy, yψ; ψx, ψy, ψψ components of
      * the inertia matrix. ψ is the rotation around the z-axis.
      */
-    base::Vector6d inertia_instability;
+    base::VectorXd inertia_instability;
 
     /* Liniar damping parameter instability (kg/s)
-     * The instability is mapped to the x, yx, xy, y, xψ, yψ components of
+     * The instability is mapped to the xx, xy, xψ; yx, yy, yψ; ψx, ψy, ψψ components of
      * the linear damping matrix. ψ is the rotation around the z-axis.
      */
-    base::Vector6d lin_damping_instability;
+    base::VectorXd lin_damping_instability;
 
     /* Quadratic damping parameter instability (kg/m)
-     * The instability is mapped to the x, yx, xy, y, xψ, yψ components of
+     * The instability is mapped to the xx, xy, xψ; yx, yy, yψ; ψx, ψy, ψψ components of
      * the quadratic damping matrix. ψ is the rotation around the z-axis.
      */
-    base::Vector6d quad_damping_instability;
+    base::VectorXd quad_damping_instability;
 
     /* Tau value to limit the bias gain in seconds */
     double inertia_tau;
