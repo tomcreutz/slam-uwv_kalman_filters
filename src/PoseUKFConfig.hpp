@@ -2,6 +2,7 @@
 #define _UWV_KALMAN_FILTERS_POSE_UKF_CONFIG_HPP
 
 #include <base/Eigen.hpp>
+#include <vector>
 
 namespace uwv_kalman_filters
 {
