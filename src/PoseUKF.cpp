@@ -5,6 +5,7 @@
 #include <uwv_dynamic_model/DynamicModel.hpp>
 #include <pose_estimation/GravitationalModel.hpp>
 #include <pose_estimation/GeographicProjection.hpp>
+#include <mtk/types/S2.hpp>
 
 using namespace uwv_kalman_filters;
 
@@ -205,11 +206,11 @@ MTK_BUILD_MANIFOLD(PoseStateWithMarker,
 )
 typedef ukfom::mtkwrap<PoseStateWithMarker> WPoseStateWithMarker;
 typedef Eigen::Matrix<PoseStateWithMarker::scalar, PoseStateWithMarker::DOF, PoseStateWithMarker::DOF> PoseStateWithMarkerCov;
+typedef ukfom::mtkwrap< MTK::S2<double> > WS2Type;
 
 template <typename FilterState>
-Eigen::Matrix<TranslationType::scalar, 2, 1>
-measurementVisualLandmark(const FilterState &state, const CameraConfiguration &camera_config,
-                          const Eigen::Vector3d& feature_pos, const Eigen::Affine3d& cam_in_imu)
+WS2Type
+measurementVisualLandmark(const FilterState &state, const Eigen::Vector3d& feature_pos, const Eigen::Affine3d& cam_in_imu)
 {
     Eigen::Affine3d imu_in_nav = Eigen::Affine3d(state.filter_state.orientation);
     imu_in_nav.translation() = state.filter_state.position;
@@ -217,8 +218,7 @@ measurementVisualLandmark(const FilterState &state, const CameraConfiguration &c
 
     Eigen::Vector3d feature_in_cam = nav_in_cam * (state.marker_orientation * feature_pos + state.marker_position);
 
-    return Eigen::Vector2d(camera_config.fx * feature_in_cam.x() / feature_in_cam.z() + camera_config.cx,
-                           camera_config.fy * feature_in_cam.y() / feature_in_cam.z() + camera_config.cy);
+    return WS2Type(MTK::S2<double>(feature_in_cam));
 }
 
 //functions for innovation gate test, using mahalanobis distance
@@ -393,13 +393,25 @@ void PoseUKF::integrateMeasurement(const std::vector<VisualFeatureMeasurement>& 
     augmented_state_cov.bottomRightCorner<6,6>() = cov_marker_pose;
     ukfom::ukf<WPoseStateWithMarker> augmented_ukf(augmented_state, augmented_state_cov);
 
+    double fx2 = std::pow(camera_config.fx, 2.);
+    double fy2 = std::pow(camera_config.fy, 2.);
+    double fxy = camera_config.fx * camera_config.fy;
+
     // Apply measurements on the augmented state
     for(unsigned i = 0; i < marker_corners.size() || i < feature_positions.size(); i++)
     {
         checkMeasurment(marker_corners[i].mu, marker_corners[i].cov);
 
-        augmented_ukf.update(marker_corners[i].mu, boost::bind(measurementVisualLandmark<WPoseStateWithMarker>, _1, camera_config, feature_positions[i], camera_in_IMU),
-            boost::bind(ukfom::id< VisualFeatureMeasurement::Cov >, marker_corners[i].cov),
+        // project image coordinates into S2
+        WS2Type projection(MTK::S2<double>((marker_corners[i].mu.x() - camera_config.cx) / camera_config.fx,
+                                           (marker_corners[i].mu.y() - camera_config.cy) / camera_config.fy,
+                                            1.0));
+        Eigen::Matrix2d projection_cov;
+        projection_cov << marker_corners[i].cov(0,0) / fx2, marker_corners[i].cov(0,1) / fxy,
+                          marker_corners[i].cov(1,0) / fxy, marker_corners[i].cov(1,1) / fy2;
+
+        augmented_ukf.update(projection, boost::bind(measurementVisualLandmark<WPoseStateWithMarker>, _1, feature_positions[i], camera_in_IMU),
+            boost::bind(ukfom::id< VisualFeatureMeasurement::Cov >, projection_cov),
             ukfom::accept_any_mahalanobis_distance<WPoseStateWithMarker::scalar>);
 
     }
