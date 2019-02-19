@@ -52,11 +52,14 @@ public:
         double water_velocity_limits; //long term 1 sigma bounds for currents
         double water_velocity_scale; // spatial scale for water current change in m/s / m
         double adcp_bias_tau;
+        double atmospheric_pressure; // atmospheric pressure in pascal (N/m²)
+        double water_density_tau; // long term 1 sigma bound for water density
     };
 
     MEASUREMENT(GeographicPosition, 2)
     MEASUREMENT(XY_Position, 2)
     MEASUREMENT(Z_Position, 1)
+    MEASUREMENT(Pressure, 1)
     MEASUREMENT(RotationRate, 3)
     MEASUREMENT(Acceleration, 3)
     MEASUREMENT(Velocity, 3)
@@ -80,6 +83,10 @@ public:
 
     /* Altitude of IMU expressed in the navigation frame */
     void integrateMeasurement(const Z_Position& z_position);
+
+    /* Pressure in liquid in pascal (N/m²) */
+    void integrateMeasurement(const Pressure& pressure,
+                              const Eigen::Vector3d& pressure_sensor_in_imu = Eigen::Vector3d::Zero());
 
     /* Rotation rates of IMU expressed in the IMU frame */
     void integrateMeasurement(const RotationRate& rotation_rate);
@@ -121,6 +128,7 @@ protected:
     InertiaType::vectorized_type inertia_offset;
     LinDampingType::vectorized_type lin_damping_offset;
     QuadDampingType::vectorized_type quad_damping_offset;
+    double water_density_offset;
 };
 
 }

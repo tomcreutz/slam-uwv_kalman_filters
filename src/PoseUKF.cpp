@@ -17,6 +17,7 @@ processModel(const FilterState &state, const Eigen::Vector3d& rotation_rate,
              const InertiaType::vectorized_type& inertia_offset,
              const LinDampingType::vectorized_type& lin_damping_offset,
              const QuadDampingType::vectorized_type& quad_damping_offset,
+             const double water_density_offset,
              const PoseUKF::PoseUKFParameter& filter_parameter, double delta_time)
 {
     FilterState new_state(state);
@@ -72,6 +73,10 @@ processModel(const FilterState &state, const Eigen::Vector3d& rotation_rate,
     WaterVelocityType::vectorized_type bias_adcp_delta = (-1.0/filter_parameter.adcp_bias_tau) *
                         (Eigen::Map< const WaterVelocityType::vectorized_type >( state.bias_adcp.data() ) ) ;
     new_state.bias_adcp.boxplus(bias_adcp_delta, delta_time);
+
+    DensityType::vectorized_type water_density_delta;
+    water_density_delta << (-1.0/filter_parameter.water_density_tau) * (state.water_density(0) - water_density_offset);
+    new_state.water_density.boxplus(water_density_delta, delta_time);
     
     return new_state;
 }
@@ -89,6 +94,16 @@ Eigen::Matrix<TranslationType::scalar, 1, 1>
 measurementZPosition(const FilterState &state)
 {
     return state.position.block(2,0,1,1);
+}
+
+template <typename FilterState>
+Eigen::Matrix<TranslationType::scalar, 1, 1>
+measurementPressureSensor(const FilterState &state, const Eigen::Vector3d& pressure_sensor_in_imu, double atmospheric_pressure)
+{
+    Eigen::Vector3d pressure_sensor_in_nav = state.position + state.orientation * pressure_sensor_in_imu;
+    Eigen::Matrix<TranslationType::scalar, 1, 1> pressure;
+    pressure << atmospheric_pressure - pressure_sensor_in_nav.z() * state.gravity(0) * state.water_density(0);
+    return pressure;
 }
 
 template <typename FilterState>
@@ -262,6 +277,7 @@ PoseUKF::PoseUKF(const State& initial_state, const Covariance& state_cov,
     inertia_offset = Eigen::Map< const InertiaType::vectorized_type >(initial_state.inertia.data());
     lin_damping_offset = Eigen::Map< const LinDampingType::vectorized_type >(initial_state.lin_damping.data());
     quad_damping_offset = Eigen::Map< const QuadDampingType::vectorized_type >(initial_state.quad_damping.data());
+    water_density_offset = initial_state.water_density(0);
 
     projection.reset(new pose_estimation::GeographicProjection(location.latitude, location.longitude));
 }
@@ -286,7 +302,7 @@ void PoseUKF::predictionStepImpl(double delta_t)
     process_noise = pow(delta_t, 2.) * process_noise;
     
     ukf->predict(boost::bind(processModel<WState>, _1, rotation_rate, projection,
-                            inertia_offset, lin_damping_offset, quad_damping_offset,
+                            inertia_offset, lin_damping_offset, quad_damping_offset, water_density_offset,
                             filter_parameter, delta_t),
                  MTK_UKF::cov(process_noise));
 }
@@ -327,6 +343,14 @@ void PoseUKF::integrateMeasurement(const XY_Position& xy_position)
     ukf->update(xy_position.mu, boost::bind(measurementXYPosition<State>, _1),
                 boost::bind(ukfom::id< XY_Position::Cov >, xy_position.cov),
                 d2p95<State::scalar>);
+}
+
+void PoseUKF::integrateMeasurement(const Pressure& pressure, const Eigen::Vector3d& pressure_sensor_in_imu)
+{
+    checkMeasurment(pressure.mu, pressure.cov);
+    ukf->update(pressure.mu, boost::bind(measurementPressureSensor<State>, _1, pressure_sensor_in_imu, filter_parameter.atmospheric_pressure),
+                boost::bind(ukfom::id< Pressure::Cov >, pressure.cov),
+                ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }
 
 void PoseUKF::integrateMeasurement(const GeographicPosition& geo_position, const Eigen::Vector3d& gps_in_body)

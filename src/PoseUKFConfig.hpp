@@ -132,6 +132,20 @@ struct VisualLandmarkConfiguration
     std::vector<VisualLandmark> landmarks;
 };
 
+struct HydrostaticConfiguration
+{
+    /* Density of water in kg/m³ */
+    double water_density;
+    /* Water density standard deviation */
+    double water_density_limits;
+    /* Time scale for water density change in seconds */
+    double water_density_tau;
+    /* atmospheric pressure in pascal (N/m²) */
+    double atmospheric_pressure;
+    /* Standard deviation of pressure measurements in N/m²sqrt(Hz) */
+    double pressure_std;
+};
+
 struct PoseUKFConfig
 {
     /* Inerial noise parameters for acceleration */
@@ -151,6 +165,9 @@ struct PoseUKFConfig
 
     /* Visual landmark configuration */
     VisualLandmarkConfiguration visual_landmarks;
+
+    /* Hydrostatic configuration */
+    HydrostaticConfiguration hydrostatics;
 
     /** Max change of acceleration in m/s^3 */
     base::Vector3d max_jerk;
