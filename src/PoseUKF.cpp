@@ -116,10 +116,14 @@ measurementVelocity(const FilterState &state)
 
 template <typename FilterState>
 AccelerationType
-measurementAcceleration(const FilterState &state)
+measurementAcceleration(const FilterState &state, boost::shared_ptr<pose_estimation::GeographicProjection> projection)
 {
     // returns expected accelerations in the IMU frame
-    return AccelerationType(state.orientation.inverse() * (Eigen::Vector3d(state.acceleration) + Eigen::Vector3d(0., 0., state.gravity(0))) + Eigen::Vector3d(state.bias_acc));
+    double latitude, longitude;
+    projection->navToWorld(state.position.x(), state.position.y(), latitude, longitude);
+    Eigen::Vector3d earth_rotation = Eigen::Vector3d(pose_estimation::EARTHW * cos(latitude), 0., pose_estimation::EARTHW * sin(latitude));
+    Eigen::Vector3d coriolis_acceleration = -2. * earth_rotation.cross(state.velocity);
+    return AccelerationType(state.orientation.inverse() * (Eigen::Vector3d(state.acceleration) + Eigen::Vector3d(0., 0., state.gravity(0)) + coriolis_acceleration) + Eigen::Vector3d(state.bias_acc));
 }
 
 template <typename FilterState>
@@ -161,7 +165,7 @@ measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model
     params.damping_matrices[1].block(0,5,2,1) = state.quad_damping.block(0,2,2,1);
     params.damping_matrices[1].block(5,0,1,2) = state.quad_damping.block(2,0,1,2);
     params.damping_matrices[1].block(5,5,1,1) = state.quad_damping.block(2,2,1,1);
-       
+
     dynamic_model->setUWVParameters(params);
 
     // assume center of rotation to be the body frame
@@ -318,7 +322,7 @@ void PoseUKF::integrateMeasurement(const Velocity& velocity)
 void PoseUKF::integrateMeasurement(const Acceleration& acceleration)
 {
     checkMeasurment(acceleration.mu, acceleration.cov);
-    ukf->update(acceleration.mu, boost::bind(measurementAcceleration<State>, _1),
+    ukf->update(acceleration.mu, boost::bind(measurementAcceleration<State>, _1, projection),
                 boost::bind(ukfom::id< Acceleration::Cov >, acceleration.cov),
                 ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }
