@@ -1,7 +1,6 @@
 #include "PoseUKF.hpp"
 #include <math.h>
 #include <base/Float.hpp>
-#include <base-logging/Logging.hpp>
 #include <uwv_dynamic_model/DynamicModel.hpp>
 #include <pose_estimation/GravitationalModel.hpp>
 #include <pose_estimation/GeographicProjection.hpp>

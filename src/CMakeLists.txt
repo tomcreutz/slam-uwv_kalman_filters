@@ -11,5 +11,4 @@ rock_library(uwv_kalman_filters
                    uwv_dynamic_model
                    eigen3
                    base-types
-                   base-logging
     DEPS_CMAKE LAPACK)
