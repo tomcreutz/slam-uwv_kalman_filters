@@ -10,5 +10,4 @@ rock_library(uwv_kalman_filters
     DEPS_PKGCONFIG pose_estimation
                    uwv_dynamic_model
                    eigen3
-                   base-types
     DEPS_CMAKE LAPACK)

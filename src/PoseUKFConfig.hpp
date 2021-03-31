@@ -1,8 +1,18 @@
 #ifndef _UWV_KALMAN_FILTERS_POSE_UKF_CONFIG_HPP
 #define _UWV_KALMAN_FILTERS_POSE_UKF_CONFIG_HPP
 
-#include <base/Eigen.hpp>
+#include <Eigen/Core>
 #include <vector>
+
+namespace base
+{
+    // this definition is neccesary in order to support ROCK's typelib based type export
+    typedef Eigen::Matrix<double, 2, 1, Eigen::DontAlign>     Vector2d;
+    typedef Eigen::Matrix<double, 3, 1, Eigen::DontAlign>     Vector3d;
+    typedef Eigen::Matrix<double, 6, 1, Eigen::DontAlign>     Vector6d;
+    typedef Eigen::Matrix<double, Eigen::Dynamic, 1, Eigen::DontAlign> 
+                                                              VectorXd;
+}
 
 namespace uwv_kalman_filters
 {

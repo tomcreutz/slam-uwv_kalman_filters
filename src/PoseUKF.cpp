@@ -1,6 +1,5 @@
 #include "PoseUKF.hpp"
 #include <math.h>
-#include <base/Float.hpp>
 #include <uwv_dynamic_model/DynamicModel.hpp>
 #include <pose_estimation/GravitationalModel.hpp>
 #include <pose_estimation/GeographicProjection.hpp>
@@ -171,16 +170,16 @@ measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model
     
     Eigen::Vector3d velocity_body = state.orientation.inverse() * (state.velocity) - rotation_rate_body.cross(imu_in_body);
     velocity_body = velocity_body - state.orientation.inverse() * water_velocity;
-    base::Vector6d velocity_6d;
+    Eigen::Matrix<TranslationType::scalar, 6, 1> velocity_6d;
     velocity_6d << velocity_body, rotation_rate_body;
 
     // assume center of rotation to be the body frame
     Eigen::Vector3d acceleration_body = state.orientation.inverse() * state.acceleration - rotation_rate_body.cross(rotation_rate_body.cross(imu_in_body));
-    base::Vector6d acceleration_6d;
+    Eigen::Matrix<TranslationType::scalar, 6, 1> acceleration_6d;
     // assume the angular acceleration to be zero
-    acceleration_6d << acceleration_body, base::Vector3d::Zero();
+    acceleration_6d << acceleration_body, Eigen::Vector3d::Zero();
 
-    base::Vector6d efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, state.orientation);
+    Eigen::Matrix<TranslationType::scalar, 6, 1> efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, state.orientation);
 
     // returns the expected forces and torques given the current state
     return efforts;
@@ -196,14 +195,14 @@ constrainVelocity(const FilterState &state, boost::shared_ptr<uwv_dynamic_model:
 {
     Eigen::Vector3d velocity_body = orientation.inverse() * (state.velocity) - rotation_rate_body.cross(imu_in_body);
     velocity_body -= orientation.inverse() * water_velocity;
-    base::Vector6d velocity_6d;
+    Eigen::Matrix<TranslationType::scalar, 6, 1> velocity_6d;
     velocity_6d << velocity_body, rotation_rate_body;
 
-    base::Vector6d acceleration_6d;
+    Eigen::Matrix<TranslationType::scalar, 6, 1> acceleration_6d;
     // assume the angular acceleration to be zero
     acceleration_6d << acceleration_body, base::Vector3d::Zero();
 
-    base::Vector6d efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, orientation);
+    Eigen::Matrix<TranslationType::scalar, 6, 1> efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, orientation);
 
     // returns the expected forces and torques given the current state
     return efforts;
