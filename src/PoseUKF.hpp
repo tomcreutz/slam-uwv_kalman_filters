@@ -1,7 +1,6 @@
 #ifndef _UWV_KALMAN_FILTERS_POSE_UKF_HPP_
 #define _UWV_KALMAN_FILTERS_POSE_UKF_HPP_
 
-#include <base/Time.hpp>
 #include <pose_estimation/UnscentedKalmanFilter.hpp>
 #include <pose_estimation/Measurement.hpp>
 #include <uwv_dynamic_model/DataTypes.hpp>
