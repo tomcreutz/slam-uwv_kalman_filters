@@ -37,6 +37,9 @@ namespace uwv_kalman_filters
 class PoseUKF : public pose_estimation::UnscentedKalmanFilter<PoseState>
 {
 public:
+    /**
+     * Persistent parameters of the filter
+     */
     struct PoseUKFParameter
     {
         Eigen::Vector3d imu_in_body;
@@ -67,6 +70,29 @@ public:
     MEASUREMENT(VisualFeatureMeasurement, 2)
 
 public:
+    /**
+     * Initializes the filter from a given initial pose (IMU in navigation frame) and pose uncertainty.
+     * The rest of the state and state covariance is computed from the parameters in PoseUKFConfig.
+     * @param pose_filter_config filter specific configuration
+     * @param model_parameters motion model parameters
+     * @param imu_in_body IMU with respect to body frame of the robot. 
+     *                    If no value is given it is assumed to be equal. (optional)
+     * @param nav_in_nwu navigation frame of the filter with repsect to the NWU frame. (optional)
+     */
+    PoseUKF(const Eigen::Vector3d& imu_in_nav_pos, const Eigen::Matrix3d& imu_in_nav_pos_cov,
+            const Eigen::Quaterniond& imu_in_nav_rot, const Eigen::Matrix3d& imu_in_nav_rot_cov,
+            const PoseUKFConfig& pose_filter_config, const uwv_dynamic_model::UWVParameters& model_parameters,
+            const Eigen::Affine3d& imu_in_body = Eigen::Affine3d::Identity(), 
+            const Eigen::Affine3d& nav_in_nwu = Eigen::Affine3d::Identity());
+    
+    /**
+     * Initializes the filter from a given initial state and state uncertainty.
+     * @param initial_state full filter state
+     * @param state_cov initial state uncertainty
+     * @param location geographic location (this is used as the reference frame of geographic projection)
+     * @param model_parameters motion model parameters
+     * @param filter_parameter persistent parametes of the filter
+     */
     PoseUKF(const State& initial_state, const Covariance& state_cov,
             const LocationConfiguration& location, const uwv_dynamic_model::UWVParameters& model_parameters,
             const PoseUKFParameter& filter_parameter);

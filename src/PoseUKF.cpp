@@ -261,6 +261,90 @@ static bool d2p95(const scalar_type &mahalanobis2)
     }
 }
 
+PoseUKF::PoseUKF(const Eigen::Vector3d& imu_in_nav_pos, const Eigen::Matrix3d& imu_in_nav_pos_cov,
+            const Eigen::Quaterniond& imu_in_nav_rot, const Eigen::Matrix3d& imu_in_nav_rot_cov,
+            const PoseUKFConfig& filter_config, const uwv_dynamic_model::UWVParameters& model_parameters,
+            const Eigen::Affine3d& imu_in_body, const Eigen::Affine3d& nav_in_nwu)
+{
+    State initial_state;
+    initial_state.position = TranslationType(nav_in_nwu * (imu_in_nav_pos + imu_in_nav_rot * imu_in_body.translation()));
+    initial_state.orientation = RotationType(MTK::SO3<double>(nav_in_nwu.rotation() * imu_in_nav_rot));
+    initial_state.velocity = VelocityType(Eigen::Vector3d::Zero());
+    initial_state.acceleration = AccelerationType(Eigen::Vector3d::Zero());
+    initial_state.bias_gyro = BiasType(imu_in_body.rotation() * filter_config.rotation_rate.bias_offset);
+    initial_state.bias_acc = BiasType(imu_in_body.rotation() * filter_config.acceleration.bias_offset);
+    Eigen::Matrix<double, 1, 1> gravity;
+    gravity(0) = pose_estimation::GravitationalModel::WGS_84(filter_config.location.latitude, filter_config.location.altitude);
+    initial_state.gravity = GravityType(gravity);
+    initial_state.inertia.block(0,0,2,2) = model_parameters.inertia_matrix.block(0,0,2,2);
+    initial_state.inertia.block(0,2,2,1) = model_parameters.inertia_matrix.block(0,5,2,1);
+    initial_state.inertia.block(2,0,1,2) = model_parameters.inertia_matrix.block(5,0,1,2);
+    initial_state.inertia.block(2,2,1,1) = model_parameters.inertia_matrix.block(5,5,1,1);
+    initial_state.lin_damping.block(0,0,2,2) = model_parameters.damping_matrices[0].block(0,0,2,2);
+    initial_state.lin_damping.block(0,2,2,1) = model_parameters.damping_matrices[0].block(0,5,2,1);
+    initial_state.lin_damping.block(2,0,1,2) = model_parameters.damping_matrices[0].block(5,0,1,2);
+    initial_state.lin_damping.block(2,2,1,1) = model_parameters.damping_matrices[0].block(5,5,1,1);
+    initial_state.quad_damping.block(0,0,2,2) = model_parameters.damping_matrices[1].block(0,0,2,2);
+    initial_state.quad_damping.block(0,2,2,1) = model_parameters.damping_matrices[1].block(0,5,2,1);
+    initial_state.quad_damping.block(2,0,1,2) = model_parameters.damping_matrices[1].block(5,0,1,2);
+    initial_state.quad_damping.block(2,2,1,1) = model_parameters.damping_matrices[1].block(5,5,1,1);
+    initial_state.water_velocity = WaterVelocityType(Eigen::Vector2d::Zero());
+    initial_state.water_velocity_below = WaterVelocityType(Eigen::Vector2d::Zero());
+    initial_state.bias_adcp = WaterVelocityType(Eigen::Vector2d::Zero());
+    Eigen::Matrix<double, 1, 1> water_density;
+    water_density << filter_config.hydrostatics.water_density;
+    initial_state.water_density = DensityType(water_density);
+
+    Covariance initial_state_cov = Covariance::Zero();
+    MTK::subblock(initial_state_cov, &State::position) = nav_in_nwu.linear() * imu_in_nav_pos_cov * nav_in_nwu.linear().transpose();
+    MTK::subblock(initial_state_cov, &State::orientation) = nav_in_nwu.linear() * imu_in_nav_rot_cov * nav_in_nwu.linear().transpose();
+    MTK::subblock(initial_state_cov, &State::velocity) = Eigen::Matrix3d::Identity(); // velocity is unknown at the start
+    MTK::subblock(initial_state_cov, &State::acceleration) = 10*Eigen::Matrix3d::Identity(); // acceleration is unknown at the start
+    MTK::subblock(initial_state_cov, &State::bias_gyro) = imu_in_body.rotation() * filter_config.rotation_rate.bias_instability.cwiseAbs2().asDiagonal() * imu_in_body.rotation().transpose();
+    MTK::subblock(initial_state_cov, &State::bias_acc) = imu_in_body.rotation() * filter_config.acceleration.bias_instability.cwiseAbs2().asDiagonal() * imu_in_body.rotation().transpose();
+    Eigen::Matrix<double, 1, 1> gravity_var;
+    gravity_var << pow(0.05, 2.); // give the gravity model a sigma of 5 cm/s^2 at the start
+    MTK::subblock(initial_state_cov, &State::gravity) = gravity_var;
+    MTK::subblock(initial_state_cov, &State::inertia) = filter_config.model_noise_parameters.inertia_instability.cwiseAbs2().asDiagonal();
+    MTK::subblock(initial_state_cov, &State::lin_damping) = filter_config.model_noise_parameters.lin_damping_instability.cwiseAbs2().asDiagonal();
+    MTK::subblock(initial_state_cov, &State::quad_damping) = filter_config.model_noise_parameters.quad_damping_instability.cwiseAbs2().asDiagonal();
+    MTK::subblock(initial_state_cov, &State::water_velocity) = pow(filter_config.water_velocity.limits,2) * Eigen::Matrix2d::Identity();
+    MTK::subblock(initial_state_cov, &State::water_velocity_below) = pow(filter_config.water_velocity.limits,2) * Eigen::Matrix2d::Identity();
+    MTK::subblock(initial_state_cov, &State::bias_adcp) = pow(filter_config.water_velocity.adcp_bias_limits,2) * Eigen::Matrix2d::Identity();
+    Eigen::Matrix<double, 1, 1> water_density_var;
+    water_density_var << pow(filter_config.hydrostatics.water_density_limits, 2.);
+    MTK::subblock(initial_state_cov, &State::water_density) = water_density_var;
+    
+    initializeFilter(initial_state, initial_state_cov);
+    
+    inertia_offset = Eigen::Map< const InertiaType::vectorized_type >(initial_state.inertia.data());
+    lin_damping_offset = Eigen::Map< const LinDampingType::vectorized_type >(initial_state.lin_damping.data());
+    quad_damping_offset = Eigen::Map< const QuadDampingType::vectorized_type >(initial_state.quad_damping.data());
+    water_density_offset = initial_state.water_density(0);
+    
+    rotation_rate = RotationRate::Mu::Zero();
+
+    dynamic_model.reset(new uwv_dynamic_model::DynamicModel());
+    dynamic_model->setUWVParameters(model_parameters);
+
+    projection.reset(new pose_estimation::GeographicProjection(filter_config.location.latitude, filter_config.location.longitude));
+
+    filter_parameter.imu_in_body = imu_in_body.translation();
+    filter_parameter.acc_bias_tau = filter_config.acceleration.bias_tau;
+    filter_parameter.acc_bias_offset = imu_in_body.rotation() * filter_config.acceleration.bias_offset;
+    filter_parameter.gyro_bias_tau = filter_config.rotation_rate.bias_tau;
+    filter_parameter.gyro_bias_offset = imu_in_body.rotation() * filter_config.rotation_rate.bias_offset;
+    filter_parameter.inertia_tau = filter_config.model_noise_parameters.inertia_tau;
+    filter_parameter.lin_damping_tau = filter_config.model_noise_parameters.lin_damping_tau;
+    filter_parameter.quad_damping_tau = filter_config.model_noise_parameters.quad_damping_tau;
+    filter_parameter.water_velocity_tau = filter_config.water_velocity.tau;
+    filter_parameter.water_velocity_limits = filter_config.water_velocity.limits;
+    filter_parameter.water_velocity_scale = filter_config.water_velocity.scale;
+    filter_parameter.adcp_bias_tau = filter_config.water_velocity.adcp_bias_tau;
+    filter_parameter.atmospheric_pressure = filter_config.hydrostatics.atmospheric_pressure;
+    filter_parameter.water_density_tau = filter_config.hydrostatics.water_density_tau;
+}
+
 PoseUKF::PoseUKF(const State& initial_state, const Covariance& state_cov,
                 const LocationConfiguration& location, const uwv_dynamic_model::UWVParameters& model_parameters,
                 const PoseUKFParameter& filter_parameter) : filter_parameter(filter_parameter)
