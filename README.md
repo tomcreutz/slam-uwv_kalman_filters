@@ -68,38 +68,21 @@ catkin build
 NOTE: A ROS node is currently not available.
 
 
+Reference
+-------
+The uwv_kalman_filters library is described/used in the following paper:
+
+```
+@inproceedings{arnold2018robust,
+  title={Robust model-aided inertial localization for autonomous underwater vehicles},
+  author={Arnold, Sascha and Medagoda, Lashika},
+  booktitle={2018 IEEE International Conference on Robotics and Automation (ICRA)},
+  pages={4889--4896},
+  year={2018},
+  organization={IEEE}
+}
+```
+
 License
 -------
 BSD 3-Clause License
-
-
-Rock Standard Layout
---------------------
-
-This directory structure follows some simple rules, to allow for generic build
-processes and simplify reuse of this project. Following these rules ensures that
-the Rock CMake macros automatically handle the project's build process and
-install setup properly.
-
-```
-STRUCTURE
--- src/ 
-	Contains all header (*.h/*.hpp) and source files
--- build/
-	The target directory for the build process, temporary content
--- bindings/
-	Language bindings for this package, e.g. put into subfolders such as
-   |-- ruby/ 
-        Ruby language bindings
--- viz/
-        Source files for a vizkit plugin / widget related to this library 
--- resources/
-	General resources such as images that are needed by the program
--- configuration/
-	Configuration files for running the program
--- external/
-	When including software that needs a non standard installation process, or one that can be
-	easily embedded include the external software directly here
--- doc/
-	should contain the existing doxygen file: doxygen.conf
-```

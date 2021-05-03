@@ -42,22 +42,37 @@ public:
      */
     struct PoseUKFParameter
     {
+        /* IMU with respect to body frame of the robot. Might be zero */
         Eigen::Vector3d imu_in_body;
+        /* Gyro bias offset in static regimen (initial bias value) (rad/s) */
         Eigen::Vector3d gyro_bias_offset;
+        /* Tau value to limit the gyro bias gain in seconds */
         double gyro_bias_tau;
+        /* Acceleration bias offset in static regimen (initial bias value) (m/s^s) */
         Eigen::Vector3d acc_bias_offset;
+        /* Tau value to limit the acceleration bias gain in seconds */
         double acc_bias_tau;
+        /* Tau value to limit the motion model inertia gain in seconds */
         double inertia_tau;
+        /* Tau value to limit the motion model linear damping gain in seconds */
         double lin_damping_tau;
+        /* Tau value to limit the motion model quadratic damping gain in seconds */
         double quad_damping_tau;
-        double water_velocity_tau; // time constant for water currents
-        double water_velocity_limits; //long term 1 sigma bounds for currents
-        double water_velocity_scale; // spatial scale for water current change in m/s / m
+        /* Tau value to limit the water currents gain in seconds */
+        double water_velocity_tau;
+        /* Long term 1 sigma bounds for currents in m/s */
+        double water_velocity_limits;
+        /* Spatial scale for water current change in m/s / m */
+        double water_velocity_scale;
+        /* Tau value to limit the ADCP bias gain in seconds */
         double adcp_bias_tau;
-        double atmospheric_pressure; // atmospheric pressure in pascal (N/m²)
-        double water_density_tau; // long term 1 sigma bound for water density
+        /* atmospheric pressure in pascal (N/m²) */
+        double atmospheric_pressure;
+        /* Tau value to limit the water density gain in seconds */
+        double water_density_tau;
     };
 
+    /* Measurements of the filter */
     MEASUREMENT(GeographicPosition, 2)
     MEASUREMENT(XY_Position, 2)
     MEASUREMENT(Z_Position, 1)
