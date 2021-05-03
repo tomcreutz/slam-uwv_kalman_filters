@@ -364,6 +364,52 @@ PoseUKF::PoseUKF(const State& initial_state, const Covariance& state_cov,
     projection.reset(new pose_estimation::GeographicProjection(location.latitude, location.longitude));
 }
 
+void PoseUKF::setProcessNoiseFromConfig(const PoseUKFConfig& filter_config, double imu_delta_t, 
+                                   const Eigen::Quaterniond& imu_in_body)
+{
+    Eigen::Matrix3d imu_in_body_m = imu_in_body.toRotationMatrix();
+    
+    Covariance process_noise_cov = PoseUKF::Covariance::Zero();
+    // Euler integration error position: (1/6/4 * jerk_max * dt^3)^2
+    // assuming max jerk is 4*sigma devide by 4
+    MTK::subblock(process_noise_cov, &State::position) = 1.5 * (std::pow(imu_delta_t, 4.0) * ((1./6.) * 0.25 * filter_config.max_jerk).cwiseAbs2()).asDiagonal();
+
+    // Euler integration error velocity: (1/2/4 * jerk_max * dt^2)^2
+    MTK::subblock(process_noise_cov, &State::velocity) = 1.5 * (std::pow(imu_delta_t, 2.0) * (0.5 * 0.25 * filter_config.max_jerk).cwiseAbs2()).asDiagonal();
+
+    // Euler integration error acceleration: (1/4 * jerk_max * dt)^2
+    MTK::subblock(process_noise_cov, &State::acceleration) = (0.25 * filter_config.max_jerk).cwiseAbs2().asDiagonal();
+
+    MTK::subblock(process_noise_cov, &State::orientation) = imu_in_body_m * filter_config.rotation_rate.randomwalk.cwiseAbs2().asDiagonal() * imu_in_body_m.transpose();
+    MTK::subblock(process_noise_cov, &State::bias_gyro) = imu_in_body_m * (2. / (filter_config.rotation_rate.bias_tau * imu_delta_t)) *
+                                        filter_config.rotation_rate.bias_instability.cwiseAbs2().asDiagonal() * imu_in_body_m.transpose();
+    MTK::subblock(process_noise_cov, &State::bias_acc) = imu_in_body_m * (2. / (filter_config.acceleration.bias_tau * imu_delta_t)) *
+                                        filter_config.acceleration.bias_instability.cwiseAbs2().asDiagonal() * imu_in_body_m.transpose();
+    Eigen::Matrix<double, 1, 1> gravity_noise;
+    gravity_noise << 1.e-12; // add a tiny bit of noise only for numeric stability
+    MTK::subblock(process_noise_cov, &State::gravity) = gravity_noise;
+    MTK::subblock(process_noise_cov, &State::inertia) = (2. / (filter_config.model_noise_parameters.inertia_tau * imu_delta_t)) *
+                                        filter_config.model_noise_parameters.inertia_instability.cwiseAbs2().asDiagonal();
+    MTK::subblock(process_noise_cov, &State::lin_damping) = (2. / (filter_config.model_noise_parameters.lin_damping_tau * imu_delta_t)) *
+                                        filter_config.model_noise_parameters.lin_damping_instability.cwiseAbs2().asDiagonal();
+    MTK::subblock(process_noise_cov, &State::quad_damping) = (2. / (filter_config.model_noise_parameters.quad_damping_tau * imu_delta_t)) *
+                                        filter_config.model_noise_parameters.quad_damping_instability.cwiseAbs2().asDiagonal();
+
+    MTK::subblock(process_noise_cov, &State::water_velocity) = (2. / (filter_config.water_velocity.tau * imu_delta_t)) *
+                                        pow(filter_config.water_velocity.limits,2) * Eigen::Matrix2d::Identity();
+
+    MTK::subblock(process_noise_cov, &State::water_velocity_below) = (2. / (filter_config.water_velocity.tau * imu_delta_t)) *
+                                        pow(filter_config.water_velocity.limits,2) * Eigen::Matrix2d::Identity();
+
+    MTK::subblock(process_noise_cov, &State::bias_adcp) = (2. / (filter_config.water_velocity.adcp_bias_tau * imu_delta_t)) *
+                                        pow(filter_config.water_velocity.adcp_bias_limits,2) * Eigen::Matrix2d::Identity();
+
+    Eigen::Matrix<double, 1, 1> water_density_noise;
+    water_density_noise << (2. / (filter_config.hydrostatics.water_density_tau * imu_delta_t)) * pow(filter_config.hydrostatics.water_density_limits, 2.);
+    MTK::subblock(process_noise_cov, &State::water_density) = water_density_noise;
+    
+    setProcessNoiseCovariance(process_noise_cov);
+}
 
 void PoseUKF::predictionStepImpl(double delta_t)
 {

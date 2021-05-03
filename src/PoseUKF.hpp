@@ -96,7 +96,18 @@ public:
     PoseUKF(const State& initial_state, const Covariance& state_cov,
             const LocationConfiguration& location, const uwv_dynamic_model::UWVParameters& model_parameters,
             const PoseUKFParameter& filter_parameter);
+    
     virtual ~PoseUKF() {}
+    
+    /**
+     * Sets the process noise covariance from the filter specific configuration.
+     * @param pose_filter_config filter specific configuration
+     * @param imu_delta_t delta time between IMU measurements in seconds (e.g. 0.01 @ 100Hz)
+     * @param imu_in_body IMU with respect to body frame of the robot. 
+     *                    If no value is given it is assumed to be equal. (optional)
+     */
+    void setProcessNoiseFromConfig(const PoseUKFConfig& pose_filter_config, double imu_delta_t, 
+                                   const Eigen::Quaterniond& imu_in_body = Eigen::Quaterniond::Identity());
 
     /* Latitude and Longitude in WGS 84 in radian.
      * Uncertainty expressed in m on earth surface */
