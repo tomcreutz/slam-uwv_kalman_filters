@@ -33,6 +33,7 @@ namespace uwv_kalman_filters
  * not considered to be rotated with respect to the body frame.
  * Rotation rates and acceleration, as well as the corresponding configuration parameters
  * therefore would need to be rotated to the body frame before integrating them in this filter.
+ * Due to the used grographic projection the navigation frame is in NWU (North-West-Up).
  */
 class PoseUKF : public pose_estimation::UnscentedKalmanFilter<PoseState>
 {
@@ -86,19 +87,17 @@ public:
 
 public:
     /**
-     * Initializes the filter from a given initial pose (IMU in navigation frame) and pose uncertainty.
+     * Initializes the filter from a given initial pose (IMU in NWU-navigation frame) and pose uncertainty.
      * The rest of the state and state covariance is computed from the parameters in PoseUKFConfig.
      * @param pose_filter_config filter specific configuration
      * @param model_parameters motion model parameters
      * @param imu_in_body IMU with respect to body frame of the robot. 
      *                    If no value is given it is assumed to be equal. (optional)
-     * @param nav_in_nwu navigation frame of the filter with repsect to the NWU frame. (optional)
      */
-    PoseUKF(const Eigen::Vector3d& imu_in_nav_pos, const Eigen::Matrix3d& imu_in_nav_pos_cov,
-            const Eigen::Quaterniond& imu_in_nav_rot, const Eigen::Matrix3d& imu_in_nav_rot_cov,
+    PoseUKF(const Eigen::Vector3d& imu_in_nwu_pos, const Eigen::Matrix3d& imu_in_nwu_pos_cov,
+            const Eigen::Quaterniond& imu_in_nwu_rot, const Eigen::Matrix3d& imu_in_nwu_rot_cov,
             const PoseUKFConfig& pose_filter_config, const uwv_dynamic_model::UWVParameters& model_parameters,
-            const Eigen::Affine3d& imu_in_body = Eigen::Affine3d::Identity(), 
-            const Eigen::Affine3d& nav_in_nwu = Eigen::Affine3d::Identity());
+            const Eigen::Affine3d& imu_in_body = Eigen::Affine3d::Identity());
     
     /**
      * Initializes the filter from a given initial state and state uncertainty.
@@ -129,10 +128,10 @@ public:
     void integrateMeasurement(const GeographicPosition& geo_position,
                               const Eigen::Vector3d& gps_in_body = Eigen::Vector3d::Zero());
 
-    /* 2D Position expressed in the navigation frame */
+    /* 2D Position expressed in the NWU-navigation frame */
     void integrateMeasurement(const XY_Position& xy_position);
 
-    /* Altitude of IMU expressed in the navigation frame */
+    /* Altitude of IMU expressed in the NWU-navigation frame */
     void integrateMeasurement(const Z_Position& z_position);
 
     /* Pressure in liquid in pascal (N/m²) */

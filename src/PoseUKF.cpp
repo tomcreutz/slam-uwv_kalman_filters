@@ -261,14 +261,14 @@ static bool d2p95(const scalar_type &mahalanobis2)
     }
 }
 
-PoseUKF::PoseUKF(const Eigen::Vector3d& imu_in_nav_pos, const Eigen::Matrix3d& imu_in_nav_pos_cov,
-            const Eigen::Quaterniond& imu_in_nav_rot, const Eigen::Matrix3d& imu_in_nav_rot_cov,
+PoseUKF::PoseUKF(const Eigen::Vector3d& imu_in_nwu_pos, const Eigen::Matrix3d& imu_in_nwu_pos_cov,
+            const Eigen::Quaterniond& imu_in_nwu_rot, const Eigen::Matrix3d& imu_in_nwu_rot_cov,
             const PoseUKFConfig& filter_config, const uwv_dynamic_model::UWVParameters& model_parameters,
-            const Eigen::Affine3d& imu_in_body, const Eigen::Affine3d& nav_in_nwu)
+            const Eigen::Affine3d& imu_in_body)
 {
     State initial_state;
-    initial_state.position = TranslationType(nav_in_nwu * (imu_in_nav_pos + imu_in_nav_rot * imu_in_body.translation()));
-    initial_state.orientation = RotationType(MTK::SO3<double>(nav_in_nwu.rotation() * imu_in_nav_rot));
+    initial_state.position = TranslationType(imu_in_nwu_pos);
+    initial_state.orientation = RotationType(imu_in_nwu_rot);
     initial_state.velocity = VelocityType(Eigen::Vector3d::Zero());
     initial_state.acceleration = AccelerationType(Eigen::Vector3d::Zero());
     initial_state.bias_gyro = BiasType(imu_in_body.rotation() * filter_config.rotation_rate.bias_offset);
@@ -296,8 +296,8 @@ PoseUKF::PoseUKF(const Eigen::Vector3d& imu_in_nav_pos, const Eigen::Matrix3d& i
     initial_state.water_density = DensityType(water_density);
 
     Covariance initial_state_cov = Covariance::Zero();
-    MTK::subblock(initial_state_cov, &State::position) = nav_in_nwu.linear() * imu_in_nav_pos_cov * nav_in_nwu.linear().transpose();
-    MTK::subblock(initial_state_cov, &State::orientation) = nav_in_nwu.linear() * imu_in_nav_rot_cov * nav_in_nwu.linear().transpose();
+    MTK::subblock(initial_state_cov, &State::position) = imu_in_nwu_pos_cov;
+    MTK::subblock(initial_state_cov, &State::orientation) = imu_in_nwu_rot_cov;
     MTK::subblock(initial_state_cov, &State::velocity) = Eigen::Matrix3d::Identity(); // velocity is unknown at the start
     MTK::subblock(initial_state_cov, &State::acceleration) = 10*Eigen::Matrix3d::Identity(); // acceleration is unknown at the start
     MTK::subblock(initial_state_cov, &State::bias_gyro) = imu_in_body.rotation() * filter_config.rotation_rate.bias_instability.cwiseAbs2().asDiagonal() * imu_in_body.rotation().transpose();
