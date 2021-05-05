@@ -15,6 +15,7 @@ namespace uwv_dynamic_model
 namespace pose_estimation
 {
     class GeographicProjection;
+    template<typename State> class DelayedStates;
 }
 
 namespace uwv_kalman_filters
@@ -122,6 +123,12 @@ public:
      */
     void setProcessNoiseFromConfig(const PoseUKFConfig& pose_filter_config, double imu_delta_t, 
                                    const Eigen::Quaterniond& imu_in_body = Eigen::Quaterniond::Identity());
+    
+    /**
+     * Sets up the state buffer allowing to integrate delayed state measurements.
+     * @param maximum_delay of measurements in seconds
+     */
+    void setupDelayedStateBuffer(double maximum_delay);
 
     /* Latitude and Longitude in WGS 84 in radian.
      * Uncertainty expressed in m on earth surface */
@@ -163,6 +170,14 @@ public:
                               const std::vector<Eigen::Vector3d>& feature_positions,
                               const Eigen::Affine3d& marker_pose, const Eigen::Matrix<double,6,6> cov_marker_pose,
                               const CameraConfiguration& camera_config, const Eigen::Affine3d& camera_in_IMU);
+    
+    /** Delayed 2D Position expressed in the NWU-navigation frame
+     * NOTE: Requires that `setupDelayedStateBuffer` is called before.
+     * @param delay delay of the measurement in seconds
+     * @returns true if measurement could be integrated.
+     *          Fails if the delay exceeds the maximum delay.
+     */
+    bool integrateDelayedMeasurement(const XY_Position& xy_position, double delay);
 
     /* Returns rotation rate in IMU frame */
     RotationRate::Mu getRotationRate();
@@ -173,12 +188,15 @@ protected:
 
     boost::shared_ptr<uwv_dynamic_model::DynamicModel> dynamic_model;
     boost::shared_ptr<pose_estimation::GeographicProjection> projection;
+    boost::shared_ptr<pose_estimation::DelayedStates<Translation2DType>> delayed_states;
     RotationRate::Mu rotation_rate;
     PoseUKFParameter filter_parameter;
     InertiaType::vectorized_type inertia_offset;
     LinDampingType::vectorized_type lin_damping_offset;
     QuadDampingType::vectorized_type quad_damping_offset;
     double water_density_offset;
+    /* Microseconds since the initialization of the filter */
+    int64_t filter_ts;
 };
 
 }
