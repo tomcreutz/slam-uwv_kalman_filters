@@ -50,6 +50,7 @@ VelocityUKF::VelocityUKF(const State& initial_state, const Covariance& state_cov
 {
     initializeFilter(initial_state, state_cov);
 
+    body_efforts.mu = Eigen::Matrix<double, 6, 1>::Zero();
     process_noise_cov = Covariance::Zero();
     MTK::setDiagonal(process_noise_cov, &WState::velocity, 0.0001);
 }
