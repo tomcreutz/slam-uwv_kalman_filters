@@ -24,6 +24,7 @@ typedef ukfom::mtkwrap< MTK::matrix<3,3> > QuadDampingType;
 typedef ukfom::mtkwrap< MTK::vect<2> > WaterVelocityType;
 typedef ukfom::mtkwrap< MTK::vect<2> > AdcpBiasType;
 typedef ukfom::mtkwrap< MTK::vect<1> > DensityType;
+typedef ukfom::mtkwrap< MTK::vect<2> > Translation2DType;
 
 MTK_BUILD_MANIFOLD(PoseState,
    ((TranslationType, position)) // position of IMU in navigation frame
@@ -40,6 +41,7 @@ MTK_BUILD_MANIFOLD(PoseState,
    ((WaterVelocityType, water_velocity_below)) // Water current velocity below the vehicle, in the North/East directions
    ((AdcpBiasType, bias_adcp)) // ADCP bias states
    ((DensityType, water_density)) // water density in kg/m³
+   ((Translation2DType, delayed_position)) // delayed xy position of IMU in navigation frame
 )
 
 }

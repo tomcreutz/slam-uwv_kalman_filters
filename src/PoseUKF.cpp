@@ -1,10 +1,9 @@
 #include "PoseUKF.hpp"
 #include <math.h>
-#include <base/Float.hpp>
-#include <base-logging/Logging.hpp>
 #include <uwv_dynamic_model/DynamicModel.hpp>
 #include <pose_estimation/GravitationalModel.hpp>
 #include <pose_estimation/GeographicProjection.hpp>
+#include <pose_estimation/DelayedStates.hpp>
 #include <mtk/types/S2.hpp>
 
 using namespace uwv_kalman_filters;
@@ -77,6 +76,9 @@ processModel(const FilterState &state, const Eigen::Vector3d &rotation_rate,
     DensityType::vectorized_type water_density_delta;
     water_density_delta << (-1.0 / filter_parameter.water_density_tau) * (state.water_density(0) - water_density_offset);
     new_state.water_density.boxplus(water_density_delta, delta_time);
+
+    // clone delayed position state
+    new_state.delayed_position = Translation2DType(state.position.block(0, 0, 2, 1));
 
     return new_state;
 }
@@ -172,16 +174,16 @@ measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model
 
     Eigen::Vector3d velocity_body = state.orientation.inverse() * (state.velocity) - rotation_rate_body.cross(imu_in_body);
     velocity_body = velocity_body - state.orientation.inverse() * water_velocity;
-    base::Vector6d velocity_6d;
+    Eigen::Matrix<TranslationType::scalar, 6, 1> velocity_6d;
     velocity_6d << velocity_body, rotation_rate_body;
 
     // assume center of rotation to be the body frame
     Eigen::Vector3d acceleration_body = state.orientation.inverse() * state.acceleration - rotation_rate_body.cross(rotation_rate_body.cross(imu_in_body));
-    base::Vector6d acceleration_6d;
+    Eigen::Matrix<TranslationType::scalar, 6, 1> acceleration_6d;
     // assume the angular acceleration to be zero
-    acceleration_6d << acceleration_body, base::Vector3d::Zero();
+    acceleration_6d << acceleration_body, Eigen::Vector3d::Zero();
 
-    base::Vector6d efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, state.orientation);
+    Eigen::Matrix<TranslationType::scalar, 6, 1> efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, state.orientation);
 
     // returns the expected forces and torques given the current state
     return efforts;
@@ -197,17 +199,25 @@ constrainVelocity(const FilterState &state, boost::shared_ptr<uwv_dynamic_model:
 {
     Eigen::Vector3d velocity_body = orientation.inverse() * (state.velocity) - rotation_rate_body.cross(imu_in_body);
     velocity_body -= orientation.inverse() * water_velocity;
-    base::Vector6d velocity_6d;
+    Eigen::Matrix<TranslationType::scalar, 6, 1> velocity_6d;
     velocity_6d << velocity_body, rotation_rate_body;
 
-    base::Vector6d acceleration_6d;
+    Eigen::Matrix<TranslationType::scalar, 6, 1> acceleration_6d;
     // assume the angular acceleration to be zero
     acceleration_6d << acceleration_body, base::Vector3d::Zero();
 
-    base::Vector6d efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, orientation);
+    Eigen::Matrix<TranslationType::scalar, 6, 1> efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, orientation);
 
     // returns the expected forces and torques given the current state
     return efforts;
+}
+
+// delayed position update model
+template <typename FilterState>
+Translation2DType
+measurementDelayedXYPosition(const FilterState &state)
+{
+    return state.delayed_position;
 }
 
 /**
@@ -229,9 +239,11 @@ measurementVisualLandmark(const FilterState &state, const Eigen::Vector3d &featu
     Eigen::Affine3d imu_in_nav; // = Eigen::Affine3d(state.filter_state.orientation);
     imu_in_nav.translation() = state.filter_state.position;
     imu_in_nav.linear() = state.filter_state.orientation.toRotationMatrix();
-    std::cout << "translation :"  << imu_in_nav.translation() << "rotation : " << imu_in_nav.linear() << std::endl;;
+    std::cout << "translation :" << imu_in_nav.translation() << "rotation : " << imu_in_nav.linear() << std::endl;
+    ;
     Eigen::Affine3d nav_in_cam = (imu_in_nav * cam_in_imu).inverse();
-    std::cout << "translation :"  << nav_in_cam.translation() << "rotation : " << nav_in_cam.linear() << std::endl;;
+    std::cout << "translation :" << nav_in_cam.translation() << "rotation : " << nav_in_cam.linear() << std::endl;
+    ;
 
     Eigen::Vector3d feature_in_cam = nav_in_cam * (state.marker_orientation * feature_pos + state.marker_position);
     std::cout << "feature_in_cam vector: " << feature_in_cam << std::endl;
@@ -266,9 +278,95 @@ static bool d2p95(const scalar_type &mahalanobis2)
     }
 }
 
+PoseUKF::PoseUKF(const Eigen::Vector3d &imu_in_nwu_pos, const Eigen::Matrix3d &imu_in_nwu_pos_cov,
+                 const Eigen::Quaterniond &imu_in_nwu_rot, const Eigen::Matrix3d &imu_in_nwu_rot_cov,
+                 const PoseUKFConfig &filter_config, const uwv_dynamic_model::UWVParameters &model_parameters,
+                 const Eigen::Affine3d &imu_in_body) : filter_ts(0)
+{
+    State initial_state;
+    initial_state.position = TranslationType(imu_in_nwu_pos);
+    initial_state.orientation = RotationType(imu_in_nwu_rot);
+    initial_state.velocity = VelocityType(Eigen::Vector3d::Zero());
+    initial_state.acceleration = AccelerationType(Eigen::Vector3d::Zero());
+    initial_state.bias_gyro = BiasType(imu_in_body.rotation() * filter_config.rotation_rate.bias_offset);
+    initial_state.bias_acc = BiasType(imu_in_body.rotation() * filter_config.acceleration.bias_offset);
+    Eigen::Matrix<double, 1, 1> gravity;
+    gravity(0) = pose_estimation::GravitationalModel::WGS_84(filter_config.location.latitude, filter_config.location.altitude);
+    initial_state.gravity = GravityType(gravity);
+    initial_state.inertia.block(0, 0, 2, 2) = model_parameters.inertia_matrix.block(0, 0, 2, 2);
+    initial_state.inertia.block(0, 2, 2, 1) = model_parameters.inertia_matrix.block(0, 5, 2, 1);
+    initial_state.inertia.block(2, 0, 1, 2) = model_parameters.inertia_matrix.block(5, 0, 1, 2);
+    initial_state.inertia.block(2, 2, 1, 1) = model_parameters.inertia_matrix.block(5, 5, 1, 1);
+    initial_state.lin_damping.block(0, 0, 2, 2) = model_parameters.damping_matrices[0].block(0, 0, 2, 2);
+    initial_state.lin_damping.block(0, 2, 2, 1) = model_parameters.damping_matrices[0].block(0, 5, 2, 1);
+    initial_state.lin_damping.block(2, 0, 1, 2) = model_parameters.damping_matrices[0].block(5, 0, 1, 2);
+    initial_state.lin_damping.block(2, 2, 1, 1) = model_parameters.damping_matrices[0].block(5, 5, 1, 1);
+    initial_state.quad_damping.block(0, 0, 2, 2) = model_parameters.damping_matrices[1].block(0, 0, 2, 2);
+    initial_state.quad_damping.block(0, 2, 2, 1) = model_parameters.damping_matrices[1].block(0, 5, 2, 1);
+    initial_state.quad_damping.block(2, 0, 1, 2) = model_parameters.damping_matrices[1].block(5, 0, 1, 2);
+    initial_state.quad_damping.block(2, 2, 1, 1) = model_parameters.damping_matrices[1].block(5, 5, 1, 1);
+    initial_state.water_velocity = WaterVelocityType(Eigen::Vector2d::Zero());
+    initial_state.water_velocity_below = WaterVelocityType(Eigen::Vector2d::Zero());
+    initial_state.bias_adcp = WaterVelocityType(Eigen::Vector2d::Zero());
+    Eigen::Matrix<double, 1, 1> water_density;
+    water_density << filter_config.hydrostatics.water_density;
+    initial_state.water_density = DensityType(water_density);
+    initial_state.delayed_position = Translation2DType(imu_in_nwu_pos.head<2>());
+
+    Covariance initial_state_cov = Covariance::Zero();
+    MTK::subblock(initial_state_cov, &State::position) = imu_in_nwu_pos_cov;
+    MTK::subblock(initial_state_cov, &State::orientation) = imu_in_nwu_rot_cov;
+    MTK::subblock(initial_state_cov, &State::velocity) = Eigen::Matrix3d::Identity();          // velocity is unknown at the start
+    MTK::subblock(initial_state_cov, &State::acceleration) = 10 * Eigen::Matrix3d::Identity(); // acceleration is unknown at the start
+    MTK::subblock(initial_state_cov, &State::bias_gyro) = imu_in_body.rotation() * filter_config.rotation_rate.bias_instability.cwiseAbs2().asDiagonal() * imu_in_body.rotation().transpose();
+    MTK::subblock(initial_state_cov, &State::bias_acc) = imu_in_body.rotation() * filter_config.acceleration.bias_instability.cwiseAbs2().asDiagonal() * imu_in_body.rotation().transpose();
+    Eigen::Matrix<double, 1, 1> gravity_var;
+    gravity_var << pow(0.05, 2.); // give the gravity model a sigma of 5 cm/s^2 at the start
+    MTK::subblock(initial_state_cov, &State::gravity) = gravity_var;
+    MTK::subblock(initial_state_cov, &State::inertia) = filter_config.model_noise_parameters.inertia_instability.cwiseAbs2().asDiagonal();
+    MTK::subblock(initial_state_cov, &State::lin_damping) = filter_config.model_noise_parameters.lin_damping_instability.cwiseAbs2().asDiagonal();
+    MTK::subblock(initial_state_cov, &State::quad_damping) = filter_config.model_noise_parameters.quad_damping_instability.cwiseAbs2().asDiagonal();
+    MTK::subblock(initial_state_cov, &State::water_velocity) = pow(filter_config.water_velocity.limits, 2) * Eigen::Matrix2d::Identity();
+    MTK::subblock(initial_state_cov, &State::water_velocity_below) = pow(filter_config.water_velocity.limits, 2) * Eigen::Matrix2d::Identity();
+    MTK::subblock(initial_state_cov, &State::bias_adcp) = pow(filter_config.water_velocity.adcp_bias_limits, 2) * Eigen::Matrix2d::Identity();
+    Eigen::Matrix<double, 1, 1> water_density_var;
+    water_density_var << pow(filter_config.hydrostatics.water_density_limits, 2.);
+    MTK::subblock(initial_state_cov, &State::water_density) = water_density_var;
+    MTK::subblock(initial_state_cov, &State::delayed_position) = MTK::subblock(initial_state_cov, &State::position).block(0, 0, 2, 2);
+
+    initializeFilter(initial_state, initial_state_cov);
+
+    inertia_offset = Eigen::Map<const InertiaType::vectorized_type>(initial_state.inertia.data());
+    lin_damping_offset = Eigen::Map<const LinDampingType::vectorized_type>(initial_state.lin_damping.data());
+    quad_damping_offset = Eigen::Map<const QuadDampingType::vectorized_type>(initial_state.quad_damping.data());
+    water_density_offset = initial_state.water_density(0);
+
+    rotation_rate = RotationRate::Mu::Zero();
+
+    dynamic_model.reset(new uwv_dynamic_model::DynamicModel());
+    dynamic_model->setUWVParameters(model_parameters);
+
+    projection.reset(new pose_estimation::GeographicProjection(filter_config.location.latitude, filter_config.location.longitude));
+
+    filter_parameter.imu_in_body = imu_in_body.translation();
+    filter_parameter.acc_bias_tau = filter_config.acceleration.bias_tau;
+    filter_parameter.acc_bias_offset = imu_in_body.rotation() * filter_config.acceleration.bias_offset;
+    filter_parameter.gyro_bias_tau = filter_config.rotation_rate.bias_tau;
+    filter_parameter.gyro_bias_offset = imu_in_body.rotation() * filter_config.rotation_rate.bias_offset;
+    filter_parameter.inertia_tau = filter_config.model_noise_parameters.inertia_tau;
+    filter_parameter.lin_damping_tau = filter_config.model_noise_parameters.lin_damping_tau;
+    filter_parameter.quad_damping_tau = filter_config.model_noise_parameters.quad_damping_tau;
+    filter_parameter.water_velocity_tau = filter_config.water_velocity.tau;
+    filter_parameter.water_velocity_limits = filter_config.water_velocity.limits;
+    filter_parameter.water_velocity_scale = filter_config.water_velocity.scale;
+    filter_parameter.adcp_bias_tau = filter_config.water_velocity.adcp_bias_tau;
+    filter_parameter.atmospheric_pressure = filter_config.hydrostatics.atmospheric_pressure;
+    filter_parameter.water_density_tau = filter_config.hydrostatics.water_density_tau;
+}
+
 PoseUKF::PoseUKF(const State &initial_state, const Covariance &state_cov,
                  const LocationConfiguration &location, const uwv_dynamic_model::UWVParameters &model_parameters,
-                 const PoseUKFParameter &filter_parameter) : filter_parameter(filter_parameter)
+                 const PoseUKFParameter &filter_parameter) : filter_parameter(filter_parameter), filter_ts(0)
 {
     initializeFilter(initial_state, state_cov);
 
@@ -283,6 +381,59 @@ PoseUKF::PoseUKF(const State &initial_state, const Covariance &state_cov,
     water_density_offset = initial_state.water_density(0);
 
     projection.reset(new pose_estimation::GeographicProjection(location.latitude, location.longitude));
+}
+
+void PoseUKF::setProcessNoiseFromConfig(const PoseUKFConfig &filter_config, double imu_delta_t,
+                                        const Eigen::Quaterniond &imu_in_body)
+{
+    Eigen::Matrix3d imu_in_body_m = imu_in_body.toRotationMatrix();
+
+    Covariance process_noise_cov = PoseUKF::Covariance::Zero();
+    // Euler integration error position: (1/6/4 * jerk_max * dt^3)^2
+    // assuming max jerk is 4*sigma devide by 4
+    MTK::subblock(process_noise_cov, &State::position) = 1.5 * (std::pow(imu_delta_t, 4.0) * ((1. / 6.) * 0.25 * filter_config.max_jerk).cwiseAbs2()).asDiagonal();
+
+    // Euler integration error velocity: (1/2/4 * jerk_max * dt^2)^2
+    MTK::subblock(process_noise_cov, &State::velocity) = 1.5 * (std::pow(imu_delta_t, 2.0) * (0.5 * 0.25 * filter_config.max_jerk).cwiseAbs2()).asDiagonal();
+
+    // Euler integration error acceleration: (1/4 * jerk_max * dt)^2
+    MTK::subblock(process_noise_cov, &State::acceleration) = (0.25 * filter_config.max_jerk).cwiseAbs2().asDiagonal();
+
+    MTK::subblock(process_noise_cov, &State::orientation) = imu_in_body_m * filter_config.rotation_rate.randomwalk.cwiseAbs2().asDiagonal() * imu_in_body_m.transpose();
+    MTK::subblock(process_noise_cov, &State::bias_gyro) = imu_in_body_m * (2. / (filter_config.rotation_rate.bias_tau * imu_delta_t)) *
+                                                          filter_config.rotation_rate.bias_instability.cwiseAbs2().asDiagonal() * imu_in_body_m.transpose();
+    MTK::subblock(process_noise_cov, &State::bias_acc) = imu_in_body_m * (2. / (filter_config.acceleration.bias_tau * imu_delta_t)) *
+                                                         filter_config.acceleration.bias_instability.cwiseAbs2().asDiagonal() * imu_in_body_m.transpose();
+    Eigen::Matrix<double, 1, 1> gravity_noise;
+    gravity_noise << 1.e-12; // add a tiny bit of noise only for numeric stability
+    MTK::subblock(process_noise_cov, &State::gravity) = gravity_noise;
+    MTK::subblock(process_noise_cov, &State::inertia) = (2. / (filter_config.model_noise_parameters.inertia_tau * imu_delta_t)) *
+                                                        filter_config.model_noise_parameters.inertia_instability.cwiseAbs2().asDiagonal();
+    MTK::subblock(process_noise_cov, &State::lin_damping) = (2. / (filter_config.model_noise_parameters.lin_damping_tau * imu_delta_t)) *
+                                                            filter_config.model_noise_parameters.lin_damping_instability.cwiseAbs2().asDiagonal();
+    MTK::subblock(process_noise_cov, &State::quad_damping) = (2. / (filter_config.model_noise_parameters.quad_damping_tau * imu_delta_t)) *
+                                                             filter_config.model_noise_parameters.quad_damping_instability.cwiseAbs2().asDiagonal();
+
+    MTK::subblock(process_noise_cov, &State::water_velocity) = (2. / (filter_config.water_velocity.tau * imu_delta_t)) *
+                                                               pow(filter_config.water_velocity.limits, 2) * Eigen::Matrix2d::Identity();
+
+    MTK::subblock(process_noise_cov, &State::water_velocity_below) = (2. / (filter_config.water_velocity.tau * imu_delta_t)) *
+                                                                     pow(filter_config.water_velocity.limits, 2) * Eigen::Matrix2d::Identity();
+
+    MTK::subblock(process_noise_cov, &State::bias_adcp) = (2. / (filter_config.water_velocity.adcp_bias_tau * imu_delta_t)) *
+                                                          pow(filter_config.water_velocity.adcp_bias_limits, 2) * Eigen::Matrix2d::Identity();
+
+    Eigen::Matrix<double, 1, 1> water_density_noise;
+    water_density_noise << (2. / (filter_config.hydrostatics.water_density_tau * imu_delta_t)) * pow(filter_config.hydrostatics.water_density_limits, 2.);
+    MTK::subblock(process_noise_cov, &State::water_density) = water_density_noise;
+    MTK::subblock(process_noise_cov, &State::delayed_position) = MTK::subblock(process_noise_cov, &State::position).block(0, 0, 2, 2);
+
+    setProcessNoiseCovariance(process_noise_cov);
+}
+
+void PoseUKF::setupDelayedStateBuffer(double maximum_delay)
+{
+    delayed_states.reset(new pose_estimation::DelayedStates<Translation2DType>(std::abs(maximum_delay)));
 }
 
 void PoseUKF::predictionStepImpl(double delta_t)
@@ -305,6 +456,13 @@ void PoseUKF::predictionStepImpl(double delta_t)
                              inertia_offset, lin_damping_offset, quad_damping_offset, water_density_offset,
                              filter_parameter, delta_t),
                  MTK_UKF::cov(process_noise));
+
+    // save current state
+    if (delayed_states)
+    {
+        filter_ts += pose_estimation::DelayedStates<Translation2DType>::fromSeconds(delta_t);
+        delayed_states->pushState(filter_ts, ukf->mu().delayed_position, MTK::subblock(ukf->sigma(), &State::delayed_position));
+    }
 }
 
 void PoseUKF::integrateMeasurement(const Velocity &velocity)
@@ -342,7 +500,7 @@ void PoseUKF::integrateMeasurement(const XY_Position &xy_position)
     checkMeasurment(xy_position.mu, xy_position.cov);
     ukf->update(xy_position.mu, boost::bind(measurementXYPosition<State>, _1),
                 boost::bind(ukfom::id<XY_Position::Cov>, xy_position.cov),
-                ukfom::accept_any_mahalanobis_distance<State::scalar>); //d2p95<State::scalar>);
+                ukfom::accept_any_mahalanobis_distance<State::scalar>); // d2p95<State::scalar>);
 }
 
 void PoseUKF::integrateMeasurement(const Pressure &pressure, const Eigen::Vector3d &pressure_sensor_in_imu)
@@ -438,6 +596,35 @@ void PoseUKF::integrateMeasurement(const std::vector<VisualFeatureMeasurement> &
 
     // Reconstructing the filter is currently the only way to modify the internal state of the filter
     ukf.reset(new MTK_UKF(augmented_ukf.mu().filter_state, augmented_ukf.sigma().block(0, 0, WState::DOF, WState::DOF)));
+}
+
+bool PoseUKF::integrateDelayedMeasurement(const XY_Position &xy_position, double delay)
+{
+    checkMeasurment(xy_position.mu, xy_position.cov);
+    int64_t measurement_ts = filter_ts - pose_estimation::DelayedStates<Translation2DType>::fromSeconds(delay);
+    Translation2DType delayed_position;
+    pose_estimation::DelayedStates<Translation2DType>::Cov cov_delayed_position;
+    if (delayed_states && delayed_states->getClosestState(measurement_ts, delayed_position, cov_delayed_position))
+    {
+        // update current state with closest delayed state
+        Translation2DType current_delayed_position = ukf->mu().delayed_position;
+        WState delayed_state = ukf->mu();
+        delayed_state.delayed_position = delayed_position;
+        ukf.reset(new MTK_UKF(delayed_state, ukf->sigma()));
+
+        // integrate delayed measurement, currently ignoring the difference in uncertainty at the delayed state
+        ukf->update(xy_position.mu, boost::bind(measurementDelayedXYPosition<WState>, _1),
+                    boost::bind(ukfom::id<XY_Position::Cov>, xy_position.cov),
+                    d2p95<State::scalar>);
+
+        WState new_state = ukf->mu();
+        new_state.delayed_position = current_delayed_position;
+
+        ukf.reset(new MTK_UKF(new_state, ukf->sigma()));
+
+        return true;
+    }
+    return false;
 }
 
 PoseUKF::RotationRate::Mu PoseUKF::getRotationRate()

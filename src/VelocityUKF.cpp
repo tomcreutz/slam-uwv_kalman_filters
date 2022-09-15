@@ -6,12 +6,12 @@ using namespace uwv_kalman_filters;
 template <typename VelocityState>
 VelocityState
 processMotionModel(const VelocityState &state, boost::shared_ptr<uwv_dynamic_model::ModelSimulation> motion_model,
-                   const Eigen::Quaterniond& orientation, const base::Vector3d& angular_velocity,
-                   const base::Vector6d& body_efforts, double delta_time)
+                   const Eigen::Quaterniond& orientation, const Eigen::Vector3d& angular_velocity,
+                   const Eigen::Matrix<double, 6, 1>& body_efforts, double delta_time)
 {
     // reset current state
     uwv_dynamic_model::PoseVelocityState model_state;
-    model_state.position = base::Vector3d::Zero();
+    model_state.position = Eigen::Vector3d::Zero();
     model_state.orientation = orientation;
     model_state.linear_velocity = state.velocity;
     model_state.angular_velocity = angular_velocity;
@@ -63,8 +63,8 @@ bool VelocityUKF::setupMotionModel(const uwv_dynamic_model::UWVParameters& param
     prediction_model->setUWVParameters(parameters);
 
     uwv_dynamic_model::PoseVelocityState model_state;
-    model_state.position = base::Vector3d::Zero();
-    model_state.orientation = base::Quaterniond::Identity();
+    model_state.position = Eigen::Vector3d::Zero();
+    model_state.orientation = Eigen::Quaterniond::Identity();
     model_state.angular_velocity = angular_velocity.mu;
     State current_state;
     if(getCurrentState(current_state))
