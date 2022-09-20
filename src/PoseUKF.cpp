@@ -628,6 +628,14 @@ bool PoseUKF::integrateDelayedMeasurement(const XY_Position &xy_position, double
     return false;
 }
 
+void PoseUKF::resetFilterWithExternalPose(const Eigen::Affine3d &imu_in_nwu)
+{
+    State new_state = ukf->mu();
+    new_state.position = TranslationType(imu_in_nwu.translation());
+    new_state.orientation = RotationType(MTK::SO3<double>(imu_in_nwu.rotation()));
+    ukf.reset(new MTK_UKF(new_state, ukf->sigma())); // elaborate whether sigma can / has to be reset or changed or if it can stay like this
+}
+
 PoseUKF::RotationRate::Mu PoseUKF::getRotationRate()
 {
     double latitude, longitude;
