@@ -461,7 +461,8 @@ void PoseUKF::predictionStepImpl(double delta_t)
     if (delayed_states)
     {
         filter_ts += pose_estimation::DelayedStates<Translation2DType>::fromSeconds(delta_t);
-        delayed_states->pushState(filter_ts, ukf->mu().delayed_position, MTK::subblock(ukf->sigma(), &State::delayed_position));
+        auto sigma = ukf->sigma(); // has to be copied as MTK::subblock doesnt accept const
+        delayed_states->pushState(filter_ts, ukf->mu().delayed_position, MTK::subblock(sigma, &State::delayed_position));
     }
 }
 
