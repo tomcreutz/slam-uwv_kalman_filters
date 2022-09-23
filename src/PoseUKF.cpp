@@ -236,18 +236,11 @@ template <typename FilterState>
 WS2Type
 measurementVisualLandmark(const FilterState &state, const Eigen::Vector3d &feature_pos, const Eigen::Affine3d &cam_in_imu)
 {
-    Eigen::Affine3d imu_in_nav; // = Eigen::Affine3d(state.filter_state.orientation);
+    Eigen::Affine3d imu_in_nav = Eigen::Affine3d(state.filter_state.orientation);
     imu_in_nav.translation() = state.filter_state.position;
-    imu_in_nav.linear() = state.filter_state.orientation.toRotationMatrix();
-    std::cout << "translation :" << imu_in_nav.translation() << "rotation : " << imu_in_nav.linear() << std::endl;
-    ;
+    //imu_in_nav.linear() = state.filter_state.orientation.toRotationMatrix();
     Eigen::Affine3d nav_in_cam = (imu_in_nav * cam_in_imu).inverse();
-    std::cout << "translation :" << nav_in_cam.translation() << "rotation : " << nav_in_cam.linear() << std::endl;
-    ;
-
     Eigen::Vector3d feature_in_cam = nav_in_cam * (state.marker_orientation * feature_pos + state.marker_position);
-    std::cout << "feature_in_cam vector: " << feature_in_cam << std::endl;
-
     return WS2Type(MTK::S2<double>(feature_in_cam));
 }
 
@@ -501,7 +494,7 @@ void PoseUKF::integrateMeasurement(const XY_Position &xy_position)
     checkMeasurment(xy_position.mu, xy_position.cov);
     ukf->update(xy_position.mu, boost::bind(measurementXYPosition<State>, _1),
                 boost::bind(ukfom::id<XY_Position::Cov>, xy_position.cov),
-                ukfom::accept_any_mahalanobis_distance<State::scalar>); // d2p95<State::scalar>);
+                ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }
 
 void PoseUKF::integrateMeasurement(const Pressure &pressure, const Eigen::Vector3d &pressure_sensor_in_imu)
@@ -586,6 +579,7 @@ void PoseUKF::integrateMeasurement(const std::vector<VisualFeatureMeasurement> &
         WS2Type projection(MTK::S2<double>((marker_corners[i].mu.x() - camera_config.cx) / camera_config.fx,
                                            (marker_corners[i].mu.y() - camera_config.cy) / camera_config.fy,
                                            1.0));
+        std::cout << "Corner: " << i << " , Projection: " << projection << std::endl;
         Eigen::Matrix2d projection_cov;
         projection_cov << marker_corners[i].cov(0, 0) / fx2, marker_corners[i].cov(0, 1) / fxy,
             marker_corners[i].cov(1, 0) / fxy, marker_corners[i].cov(1, 1) / fy2;
@@ -596,6 +590,7 @@ void PoseUKF::integrateMeasurement(const std::vector<VisualFeatureMeasurement> &
     }
 
     // Reconstructing the filter is currently the only way to modify the internal state of the filter
+    
     ukf.reset(new MTK_UKF(augmented_ukf.mu().filter_state, augmented_ukf.sigma().block(0, 0, WState::DOF, WState::DOF)));
 }
 
