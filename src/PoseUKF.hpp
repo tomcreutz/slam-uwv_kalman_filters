@@ -130,7 +130,7 @@ namespace uwv_kalman_filters
          * Sets up the state buffer allowing to integrate delayed state measurements.
          * @param maximum_delay of measurements in seconds
          */
-        void setupDelayedStateBuffer(double maximum_delay);
+        // void setupDelayedStateBuffer(double maximum_delay);
 
         /* Latitude and Longitude in WGS 84 in radian.
          * Uncertainty expressed in m on earth surface */
@@ -139,6 +139,8 @@ namespace uwv_kalman_filters
 
         /* 2D Position expressed in the NWU-navigation frame */
         void integrateMeasurement(const XY_Position &xy_position);
+        /* 2D delayed position expressed in the NWU-navigation frame, also needs delayed position state for measurement function*/
+        void integrateDelayedPositionMeasurement(const XY_Position &xy_position, const Eigen::Vector2d &delayed_position);
 
         /* Altitude of IMU expressed in the NWU-navigation frame */
         void integrateMeasurement(const Z_Position &z_position);
@@ -173,13 +175,13 @@ namespace uwv_kalman_filters
                                   const Eigen::Affine3d &marker_pose, const Eigen::Matrix<double, 6, 6> cov_marker_pose,
                                   const CameraConfiguration &camera_config, const Eigen::Affine3d &camera_in_IMU);
 
-        /** Delayed 2D Position expressed in the NWU-navigation frame
-         * NOTE: Requires that `setupDelayedStateBuffer` is called before.
-         * @param delay delay of the measurement in seconds
-         * @returns true if measurement could be integrated.
-         *          Fails if the delay exceeds the maximum delay.
-         */
-        bool integrateDelayedMeasurement(const XY_Position &xy_position, double delay);
+        // /** Delayed 2D Position expressed in the NWU-navigation frame
+        //  * NOTE: Requires that `setupDelayedStateBuffer` is called before.
+        //  * @param delay delay of the measurement in seconds
+        //  * @returns true if measurement could be integrated.
+        //  *          Fails if the delay exceeds the maximum delay.
+        //  */
+        // bool integrateDelayedMeasurement(const XY_Position &xy_position, double delay);
 
         void resetFilterWithExternalPose(const Eigen::Affine3d &imu_in_nav);
 

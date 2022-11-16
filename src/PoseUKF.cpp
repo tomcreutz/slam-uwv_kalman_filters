@@ -78,7 +78,7 @@ processModel(const FilterState &state, const Eigen::Vector3d &rotation_rate,
     new_state.water_density.boxplus(water_density_delta, delta_time);
 
     // clone delayed position state
-    new_state.delayed_position = Translation2DType(state.position.block(0, 0, 2, 1));
+    // new_state.delayed_position = Translation2DType(state.position.block(0, 0, 2, 1));
 
     return new_state;
 }
@@ -89,6 +89,12 @@ Eigen::Matrix<TranslationType::scalar, 2, 1>
 measurementXYPosition(const FilterState &state)
 {
     return state.position.block(0, 0, 2, 1);
+}
+
+Eigen::Matrix<TranslationType::scalar, 2, 1>
+measurementDelayedXYPosition(const Eigen::Vector2d &delayed_position)
+{
+    return delayed_position;
 }
 
 template <typename FilterState>
@@ -212,14 +218,6 @@ constrainVelocity(const FilterState &state, boost::shared_ptr<uwv_dynamic_model:
     return efforts;
 }
 
-// delayed position update model
-template <typename FilterState>
-Translation2DType
-measurementDelayedXYPosition(const FilterState &state)
-{
-    return state.delayed_position;
-}
-
 /**
  * Augments the pose filter state with a marker pose.
  * This allows to take the uncertainty of the marker pose into account.
@@ -238,7 +236,7 @@ measurementVisualLandmark(const FilterState &state, const Eigen::Vector3d &featu
 {
     Eigen::Affine3d imu_in_nav = Eigen::Affine3d(state.filter_state.orientation);
     imu_in_nav.translation() = state.filter_state.position;
-    //imu_in_nav.linear() = state.filter_state.orientation.toRotationMatrix();
+    // imu_in_nav.linear() = state.filter_state.orientation.toRotationMatrix();
     Eigen::Affine3d nav_in_cam = (imu_in_nav * cam_in_imu).inverse();
     Eigen::Vector3d feature_in_cam = nav_in_cam * (state.marker_orientation * feature_pos + state.marker_position);
     return WS2Type(MTK::S2<double>(feature_in_cam));
@@ -304,7 +302,7 @@ PoseUKF::PoseUKF(const Eigen::Vector3d &imu_in_nwu_pos, const Eigen::Matrix3d &i
     Eigen::Matrix<double, 1, 1> water_density;
     water_density << filter_config.hydrostatics.water_density;
     initial_state.water_density = DensityType(water_density);
-    initial_state.delayed_position = Translation2DType(imu_in_nwu_pos.head<2>());
+    // initial_state.delayed_position = Translation2DType(imu_in_nwu_pos.head<2>());
 
     Covariance initial_state_cov = Covariance::Zero();
     MTK::subblock(initial_state_cov, &State::position) = imu_in_nwu_pos_cov;
@@ -325,7 +323,7 @@ PoseUKF::PoseUKF(const Eigen::Vector3d &imu_in_nwu_pos, const Eigen::Matrix3d &i
     Eigen::Matrix<double, 1, 1> water_density_var;
     water_density_var << pow(filter_config.hydrostatics.water_density_limits, 2.);
     MTK::subblock(initial_state_cov, &State::water_density) = water_density_var;
-    MTK::subblock(initial_state_cov, &State::delayed_position) = MTK::subblock(initial_state_cov, &State::position).block(0, 0, 2, 2);
+    // MTK::subblock(initial_state_cov, &State::delayed_position) = MTK::subblock(initial_state_cov, &State::position).block(0, 0, 2, 2);
 
     initializeFilter(initial_state, initial_state_cov);
 
@@ -419,15 +417,15 @@ void PoseUKF::setProcessNoiseFromConfig(const PoseUKFConfig &filter_config, doub
     Eigen::Matrix<double, 1, 1> water_density_noise;
     water_density_noise << (2. / (filter_config.hydrostatics.water_density_tau * imu_delta_t)) * pow(filter_config.hydrostatics.water_density_limits, 2.);
     MTK::subblock(process_noise_cov, &State::water_density) = water_density_noise;
-    MTK::subblock(process_noise_cov, &State::delayed_position) = MTK::subblock(process_noise_cov, &State::position).block(0, 0, 2, 2);
+    // MTK::subblock(process_noise_cov, &State::delayed_position) = MTK::subblock(process_noise_cov, &State::position).block(0, 0, 2, 2);
 
     setProcessNoiseCovariance(process_noise_cov);
 }
 
-void PoseUKF::setupDelayedStateBuffer(double maximum_delay)
-{
-    delayed_states.reset(new pose_estimation::DelayedStates<Translation2DType>(std::abs(maximum_delay)));
-}
+// void PoseUKF::setupDelayedStateBuffer(double maximum_delay)
+// {
+//     delayed_states.reset(new pose_estimation::DelayedStates<Translation2DType>(std::abs(maximum_delay)));
+// }
 
 void PoseUKF::predictionStepImpl(double delta_t)
 {
@@ -451,12 +449,12 @@ void PoseUKF::predictionStepImpl(double delta_t)
                  MTK_UKF::cov(process_noise));
 
     // save current state
-    if (delayed_states)
-    {
-        filter_ts += pose_estimation::DelayedStates<Translation2DType>::fromSeconds(delta_t);
-        auto sigma = ukf->sigma(); // has to be copied as MTK::subblock doesnt accept const
-        delayed_states->pushState(filter_ts, ukf->mu().delayed_position, MTK::subblock(sigma, &State::delayed_position));
-    }
+    // if (delayed_states)
+    // {
+    //     filter_ts += pose_estimation::DelayedStates<Translation2DType>::fromSeconds(delta_t);
+    //     auto sigma = ukf->sigma(); // has to be copied as MTK::subblock doesnt accept const
+    //     delayed_states->pushState(filter_ts, ukf->mu().delayed_position, MTK::subblock(sigma, &State::delayed_position));
+    // }
 }
 
 void PoseUKF::integrateMeasurement(const Velocity &velocity)
@@ -493,6 +491,14 @@ void PoseUKF::integrateMeasurement(const XY_Position &xy_position)
 {
     checkMeasurment(xy_position.mu, xy_position.cov);
     ukf->update(xy_position.mu, boost::bind(measurementXYPosition<State>, _1),
+                boost::bind(ukfom::id<XY_Position::Cov>, xy_position.cov),
+                ukfom::accept_any_mahalanobis_distance<State::scalar>);
+}
+
+void PoseUKF::integrateDelayedPositionMeasurement(const XY_Position &xy_position, const Eigen::Vector2d &delayed_position)
+{
+    checkMeasurment(xy_position.mu, xy_position.cov);
+    ukf->update(xy_position.mu, boost::bind(measurementDelayedXYPosition, delayed_position),
                 boost::bind(ukfom::id<XY_Position::Cov>, xy_position.cov),
                 ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }
@@ -590,38 +596,38 @@ void PoseUKF::integrateMeasurement(const std::vector<VisualFeatureMeasurement> &
     }
 
     // Reconstructing the filter is currently the only way to modify the internal state of the filter
-    
+
     ukf.reset(new MTK_UKF(augmented_ukf.mu().filter_state, augmented_ukf.sigma().block(0, 0, WState::DOF, WState::DOF)));
 }
 
-bool PoseUKF::integrateDelayedMeasurement(const XY_Position &xy_position, double delay)
-{
-    checkMeasurment(xy_position.mu, xy_position.cov);
-    int64_t measurement_ts = filter_ts - pose_estimation::DelayedStates<Translation2DType>::fromSeconds(delay);
-    Translation2DType delayed_position;
-    pose_estimation::DelayedStates<Translation2DType>::Cov cov_delayed_position;
-    if (delayed_states && delayed_states->getClosestState(measurement_ts, delayed_position, cov_delayed_position))
-    {
-        // update current state with closest delayed state
-        Translation2DType current_delayed_position = ukf->mu().delayed_position;
-        WState delayed_state = ukf->mu();
-        delayed_state.delayed_position = delayed_position;
-        ukf.reset(new MTK_UKF(delayed_state, ukf->sigma()));
+// bool PoseUKF::integrateDelayedMeasurement(const XY_Position &xy_position, double delay)
+// {
+//     checkMeasurment(xy_position.mu, xy_position.cov);
+//     int64_t measurement_ts = filter_ts - pose_estimation::DelayedStates<Translation2DType>::fromSeconds(delay);
+//     Translation2DType delayed_position;
+//     pose_estimation::DelayedStates<Translation2DType>::Cov cov_delayed_position;
+//     if (delayed_states && delayed_states->getClosestState(measurement_ts, delayed_position, cov_delayed_position))
+//     {
+//         // update current state with closest delayed state
+//         Translation2DType current_delayed_position = ukf->mu().delayed_position;
+//         WState delayed_state = ukf->mu();
+//         delayed_state.delayed_position = delayed_position;
+//         ukf.reset(new MTK_UKF(delayed_state, ukf->sigma()));
 
-        // integrate delayed measurement, currently ignoring the difference in uncertainty at the delayed state
-        ukf->update(xy_position.mu, boost::bind(measurementDelayedXYPosition<WState>, _1),
-                    boost::bind(ukfom::id<XY_Position::Cov>, xy_position.cov),
-                    d2p95<State::scalar>);
+//         // integrate delayed measurement, currently ignoring the difference in uncertainty at the delayed state
+//         ukf->update(xy_position.mu, boost::bind(measurementDelayedXYPosition<WState>, _1),
+//                     boost::bind(ukfom::id<XY_Position::Cov>, xy_position.cov),
+//                     d2p95<State::scalar>);
 
-        WState new_state = ukf->mu();
-        new_state.delayed_position = current_delayed_position;
+//         WState new_state = ukf->mu();
+//         new_state.delayed_position = current_delayed_position;
 
-        ukf.reset(new MTK_UKF(new_state, ukf->sigma()));
+//         ukf.reset(new MTK_UKF(new_state, ukf->sigma()));
 
-        return true;
-    }
-    return false;
-}
+//         return true;
+//     }
+//     return false;
+// }
 
 void PoseUKF::resetFilterWithExternalPose(const Eigen::Affine3d &imu_in_nwu)
 {
