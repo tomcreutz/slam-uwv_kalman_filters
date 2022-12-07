@@ -242,6 +242,22 @@ measurementVisualLandmark(const FilterState &state, const Eigen::Vector3d &featu
     return WS2Type(MTK::S2<double>(feature_in_cam));
 }
 
+/**
+ * Augments the pose filter state with a delayed position.
+ */
+MTK_BUILD_MANIFOLD(PoseStateWithDelayedPosition,
+                   ((ukfom::mtkwrap<PoseState>, filter_state))((Translation2DType, delayed_position)) // delayed position in navigation frame
+)
+typedef ukfom::mtkwrap<PoseStateWithDelayedPosition> WPoseStateWithDelayedPosition;
+typedef Eigen::Matrix<PoseStateWithDelayedPosition::scalar, PoseStateWithDelayedPosition::DOF, PoseStateWithDelayedPosition::DOF> PoseStateWithDelayedPositionCov;
+
+template <typename FilterState>
+Translation2DType
+measurementDelayedPosition(const FilterState &state)
+{
+    return state.delayed_position;
+}
+
 // functions for innovation gate test, using mahalanobis distance
 template <typename scalar_type>
 static bool d2p99(const scalar_type &mahalanobis2)
@@ -501,6 +517,23 @@ void PoseUKF::integrateDelayedPositionMeasurement(const XY_Position &xy_position
     ukf->update(xy_position.mu, boost::bind(measurementDelayedXYPosition, delayed_position),
                 boost::bind(ukfom::id<XY_Position::Cov>, xy_position.cov),
                 ukfom::accept_any_mahalanobis_distance<State::scalar>);
+}
+
+void PoseUKF::integrateDelayedPositionMeasurementWithStateAugmentation(const XY_Position &xy_position, const Eigen::Vector2d &delayed_position, const Eigen::Matrix2d &cov_delayed_position)
+{
+    checkMeasurment(xy_position.mu, xy_position.cov);
+    // Augment the filter state with the marker pose
+    WPoseStateWithDelayedPosition augmented_state;
+    augmented_state.filter_state = ukf->mu();
+    augmented_state.delayed_position = Translation2DType(delayed_position);
+    PoseStateWithDelayedPositionCov augmented_state_cov = PoseStateWithDelayedPositionCov::Zero();
+    augmented_state_cov.block(0, 0, WState::DOF, WState::DOF) = ukf->sigma();
+    augmented_state_cov.bottomRightCorner<2, 2>() = cov_delayed_position;
+    ukfom::ukf<WPoseStateWithDelayedPosition> augmented_ukf(augmented_state, augmented_state_cov);
+    augmented_ukf.update(xy_position.mu, boost::bind(measurementDelayedPosition<WPoseStateWithDelayedPosition>, _1),
+                         boost::bind(ukfom::id<XY_Position::Cov>, xy_position.cov),
+                         ukfom::accept_any_mahalanobis_distance<State::scalar>);
+    ukf.reset(new MTK_UKF(augmented_ukf.mu().filter_state, augmented_ukf.sigma().block(0, 0, WState::DOF, WState::DOF)));
 }
 
 void PoseUKF::integrateMeasurement(const Pressure &pressure, const Eigen::Vector3d &pressure_sensor_in_imu)

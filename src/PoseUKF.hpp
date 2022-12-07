@@ -141,6 +141,7 @@ namespace uwv_kalman_filters
         void integrateMeasurement(const XY_Position &xy_position);
         /* 2D delayed position expressed in the NWU-navigation frame, also needs delayed position state for measurement function*/
         void integrateDelayedPositionMeasurement(const XY_Position &xy_position, const Eigen::Vector2d &delayed_position);
+        void integrateDelayedPositionMeasurementWithStateAugmentation(const XY_Position &xy_position, const Eigen::Vector2d &delayed_position, const Eigen::Matrix2d &cov_delayed_position);
 
         /* Altitude of IMU expressed in the NWU-navigation frame */
         void integrateMeasurement(const Z_Position &z_position);
