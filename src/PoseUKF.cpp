@@ -513,28 +513,48 @@ void PoseUKF::integrateMeasurement(const XY_Position &xy_position)
 
 void PoseUKF::integrateDelayedPositionMeasurement(const XY_Position &xy_position, const Eigen::Vector2d &delayed_position)
 {
-    checkMeasurment(xy_position.mu, xy_position.cov);
-    ukf->update(xy_position.mu, boost::bind(measurementDelayedXYPosition, delayed_position),
-                boost::bind(ukfom::id<XY_Position::Cov>, xy_position.cov),
+    Eigen::Vector2d current_position(ukf->mu().position.head<2>());
+    Eigen::Vector2d position_difference = current_position - delayed_position;
+
+    Eigen::Vector2d meas = xy_position.mu;
+    XY_Position new_xy_position;
+    new_xy_position.mu = meas + position_difference;
+    new_xy_position.cov = xy_position.cov;
+    checkMeasurment(new_xy_position.mu, new_xy_position.cov);
+    ukf->update(new_xy_position.mu, boost::bind(measurementXYPosition<State>, _1),
+                boost::bind(ukfom::id<XY_Position::Cov>, new_xy_position.cov),
                 ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }
 
-void PoseUKF::integrateDelayedPositionMeasurementWithStateAugmentation(const XY_Position &xy_position, const Eigen::Vector2d &delayed_position, const Eigen::Matrix2d &cov_delayed_position)
-{
-    checkMeasurment(xy_position.mu, xy_position.cov);
-    // Augment the filter state with the marker pose
-    WPoseStateWithDelayedPosition augmented_state;
-    augmented_state.filter_state = ukf->mu();
-    augmented_state.delayed_position = Translation2DType(delayed_position);
-    PoseStateWithDelayedPositionCov augmented_state_cov = PoseStateWithDelayedPositionCov::Zero();
-    augmented_state_cov.block(0, 0, WState::DOF, WState::DOF) = ukf->sigma();
-    augmented_state_cov.bottomRightCorner<2, 2>() = cov_delayed_position;
-    ukfom::ukf<WPoseStateWithDelayedPosition> augmented_ukf(augmented_state, augmented_state_cov);
-    augmented_ukf.update(xy_position.mu, boost::bind(measurementDelayedPosition<WPoseStateWithDelayedPosition>, _1),
-                         boost::bind(ukfom::id<XY_Position::Cov>, xy_position.cov),
-                         ukfom::accept_any_mahalanobis_distance<State::scalar>);
-    ukf.reset(new MTK_UKF(augmented_ukf.mu().filter_state, augmented_ukf.sigma().block(0, 0, WState::DOF, WState::DOF)));
-}
+// void PoseUKF::integrateDelayedPositionMeasurementWithStateAugmentation(const XY_Position &xy_position, const Eigen::Vector2d &delayed_position, const Eigen::Matrix2d &cov_delayed_position)
+// {
+//     Eigen::Vector2d current_position(ukf->mu().position.head<2>());
+//     Eigen::Vector2d position_difference = current_position - delayed_position;
+
+//     Eigen::Vector2d meas = xy_position.mu;
+//     XY_Position new_xy_position;
+//     new_xy_position.mu = meas + position_difference;
+//     new_xy_position.cov = xy_position.cov;
+//     checkMeasurment(new_xy_position.mu, new_xy_position.cov);
+//     ukf->update(new_xy_position.mu, boost::bind(measurementXYPosition<State>, _1),
+//                 boost::bind(ukfom::id<XY_Position::Cov>, new_xy_position.cov),
+//                 ukfom::accept_any_mahalanobis_distance<State::scalar>);
+
+//     // Augment the filter state with the marker pose
+//     // WPoseStateWithDelayedPosition augmented_state;
+//     // augmented_state.filter_state = ukf->mu();
+//     // augmented_state.delayed_position = Translation2DType(delayed_position);
+//     // PoseStateWithDelayedPositionCov augmented_state_cov = PoseStateWithDelayedPositionCov::Zero();
+//     // augmented_state_cov.block(0, 0, WState::DOF, WState::DOF) = ukf->sigma();
+//     // augmented_state_cov.bottomRightCorner<2, 2>() = cov_delayed_position;
+//     // ukfom::ukf<WPoseStateWithDelayedPosition> augmented_ukf(augmented_state, augmented_state_cov);
+//     // augmented_ukf.update(xy_position.mu, boost::bind(measurementDelayedPosition<WPoseStateWithDelayedPosition>, _1),
+//     //                      boost::bind(ukfom::id<XY_Position::Cov>, xy_position.cov),
+//     //                      ukfom::accept_any_mahalanobis_distance<WPoseStateWithDelayedPosition::scalar>);
+//     // std::cout << "Position before:" << ukf->mu().position << std::endl;
+//     // ukf.reset(new MTK_UKF(augmented_ukf.mu().filter_state, augmented_ukf.sigma().block(0, 0, WState::DOF, WState::DOF)));
+//     // std::cout << "Position after:" << ukf->mu().position << std::endl;
+// }
 
 void PoseUKF::integrateMeasurement(const Pressure &pressure, const Eigen::Vector3d &pressure_sensor_in_imu)
 {
@@ -618,7 +638,7 @@ void PoseUKF::integrateMeasurement(const std::vector<VisualFeatureMeasurement> &
         WS2Type projection(MTK::S2<double>((marker_corners[i].mu.x() - camera_config.cx) / camera_config.fx,
                                            (marker_corners[i].mu.y() - camera_config.cy) / camera_config.fy,
                                            1.0));
-        std::cout << "Corner: " << i << " , Projection: " << projection << std::endl;
+        // std::cout << "Corner: " << i << " , Projection: " << projection << std::endl;
         Eigen::Matrix2d projection_cov;
         projection_cov << marker_corners[i].cov(0, 0) / fx2, marker_corners[i].cov(0, 1) / fxy,
             marker_corners[i].cov(1, 0) / fxy, marker_corners[i].cov(1, 1) / fy2;
