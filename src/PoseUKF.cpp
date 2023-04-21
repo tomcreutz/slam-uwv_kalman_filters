@@ -1,6 +1,5 @@
 #include "PoseUKF.hpp"
 #include <math.h>
-#include <uwv_dynamic_model/DynamicModel.hpp>
 #include <pose_estimation/GravitationalModel.hpp>
 #include <pose_estimation/GeographicProjection.hpp>
 #include <pose_estimation/DelayedStates.hpp>
@@ -13,9 +12,6 @@ template <typename FilterState>
 FilterState
 processModel(const FilterState &state, const Eigen::Vector3d &rotation_rate,
              boost::shared_ptr<pose_estimation::GeographicProjection> projection,
-             const InertiaType::vectorized_type &inertia_offset,
-             const LinDampingType::vectorized_type &lin_damping_offset,
-             const QuadDampingType::vectorized_type &quad_damping_offset,
              const double water_density_offset,
              const PoseUKF::PoseUKFParameter &filter_parameter, double delta_time)
 {
@@ -42,17 +38,17 @@ processModel(const FilterState &state, const Eigen::Vector3d &rotation_rate,
                                      (Eigen::Vector3d(state.bias_acc) - filter_parameter.acc_bias_offset);
     new_state.bias_acc.boxplus(acc_bias_delta, delta_time);
 
-    InertiaType::vectorized_type inertia_delta = (-1.0 / filter_parameter.inertia_tau) *
-                                                 (Eigen::Map<const InertiaType::vectorized_type>(state.inertia.data()) - inertia_offset);
-    new_state.inertia.boxplus(inertia_delta, delta_time);
+    // InertiaType::vectorized_type inertia_delta = (-1.0 / filter_parameter.inertia_tau) *
+    //                                              (Eigen::Map<const InertiaType::vectorized_type>(state.inertia.data()) - inertia_offset);
+    // new_state.inertia.boxplus(inertia_delta, delta_time);
 
-    LinDampingType::vectorized_type lin_damping_delta = (-1.0 / filter_parameter.lin_damping_tau) *
-                                                        (Eigen::Map<const LinDampingType::vectorized_type>(state.lin_damping.data()) - lin_damping_offset);
-    new_state.lin_damping.boxplus(lin_damping_delta, delta_time);
+    // LinDampingType::vectorized_type lin_damping_delta = (-1.0 / filter_parameter.lin_damping_tau) *
+    //                                                     (Eigen::Map<const LinDampingType::vectorized_type>(state.lin_damping.data()) - lin_damping_offset);
+    // new_state.lin_damping.boxplus(lin_damping_delta, delta_time);
 
-    QuadDampingType::vectorized_type quad_damping_delta = (-1.0 / filter_parameter.quad_damping_tau) *
-                                                          (Eigen::Map<const QuadDampingType::vectorized_type>(state.quad_damping.data()) - quad_damping_offset);
-    new_state.quad_damping.boxplus(quad_damping_delta, delta_time);
+    // QuadDampingType::vectorized_type quad_damping_delta = (-1.0 / filter_parameter.quad_damping_tau) *
+    //                                                       (Eigen::Map<const QuadDampingType::vectorized_type>(state.quad_damping.data()) - quad_damping_offset);
+    // new_state.quad_damping.boxplus(quad_damping_delta, delta_time);
 
     // XY water velocity state changes due to position change over a period of time (delta P ~ V * dt). This should be reflected in the process noise.
     // Does not account for revisitation. XY water velocity also changes to due to a temporal aspect, which is also reflected here.
@@ -150,73 +146,73 @@ measurementWaterCurrents(const FilterState &state, double cell_weighting)
     return expected_measurement;
 }
 
-template <typename FilterState>
-Eigen::Matrix<TranslationType::scalar, 6, 1>
-measurementEfforts(const FilterState &state, boost::shared_ptr<uwv_dynamic_model::DynamicModel> dynamic_model,
-                   const Eigen::Vector3d &imu_in_body, const Eigen::Vector3d &rotation_rate_body)
-{
-    // set damping parameters
-    uwv_dynamic_model::UWVParameters params = dynamic_model->getUWVParameters();
-    params.inertia_matrix.block(0, 0, 2, 2) = state.inertia.block(0, 0, 2, 2);
-    params.inertia_matrix.block(0, 5, 2, 1) = state.inertia.block(0, 2, 2, 1);
-    params.inertia_matrix.block(5, 0, 1, 2) = state.inertia.block(2, 0, 1, 2);
-    params.inertia_matrix.block(5, 5, 1, 1) = state.inertia.block(2, 2, 1, 1);
-    params.damping_matrices[0].block(0, 0, 2, 2) = state.lin_damping.block(0, 0, 2, 2);
-    params.damping_matrices[0].block(0, 5, 2, 1) = state.lin_damping.block(0, 2, 2, 1);
-    params.damping_matrices[0].block(5, 0, 1, 2) = state.lin_damping.block(2, 0, 1, 2);
-    params.damping_matrices[0].block(5, 5, 1, 1) = state.lin_damping.block(2, 2, 1, 1);
-    params.damping_matrices[1].block(0, 0, 2, 2) = state.quad_damping.block(0, 0, 2, 2);
-    params.damping_matrices[1].block(0, 5, 2, 1) = state.quad_damping.block(0, 2, 2, 1);
-    params.damping_matrices[1].block(5, 0, 1, 2) = state.quad_damping.block(2, 0, 1, 2);
-    params.damping_matrices[1].block(5, 5, 1, 1) = state.quad_damping.block(2, 2, 1, 1);
+// template <typename FilterState>
+// Eigen::Matrix<TranslationType::scalar, 6, 1>
+// measurementEfforts(const FilterState &state, boost::shared_ptr<auv_model::MotionModelBase> dynamic_model,
+//                    const Eigen::Vector3d &imu_in_body, const Eigen::Vector3d &rotation_rate_body)
+// {
+//     // set damping parameters
+//     auv_model::Parameters params = dynamic_model->getParams();
+//     params.inertia_matrix.block(0, 0, 2, 2) = state.inertia.block(0, 0, 2, 2);
+//     params.inertia_matrix.block(0, 5, 2, 1) = state.inertia.block(0, 2, 2, 1);
+//     params.inertia_matrix.block(5, 0, 1, 2) = state.inertia.block(2, 0, 1, 2);
+//     params.inertia_matrix.block(5, 5, 1, 1) = state.inertia.block(2, 2, 1, 1);
+//     params.damping_matrices[0].block(0, 0, 2, 2) = state.lin_damping.block(0, 0, 2, 2);
+//     params.damping_matrices[0].block(0, 5, 2, 1) = state.lin_damping.block(0, 2, 2, 1);
+//     params.damping_matrices[0].block(5, 0, 1, 2) = state.lin_damping.block(2, 0, 1, 2);
+//     params.damping_matrices[0].block(5, 5, 1, 1) = state.lin_damping.block(2, 2, 1, 1);
+//     params.damping_matrices[1].block(0, 0, 2, 2) = state.quad_damping.block(0, 0, 2, 2);
+//     params.damping_matrices[1].block(0, 5, 2, 1) = state.quad_damping.block(0, 2, 2, 1);
+//     params.damping_matrices[1].block(5, 0, 1, 2) = state.quad_damping.block(2, 0, 1, 2);
+//     params.damping_matrices[1].block(5, 5, 1, 1) = state.quad_damping.block(2, 2, 1, 1);
 
-    dynamic_model->setUWVParameters(params);
+//     dynamic_model->setUWVParameters(params);
 
-    // assume center of rotation to be the body frame
-    Eigen::Vector3d water_velocity;
-    water_velocity[0] = state.water_velocity[0];
-    water_velocity[1] = state.water_velocity[1];
-    water_velocity[2] = 0; // start with the assumption of zero water current velocity in the Z
+//     // assume center of rotation to be the body frame
+//     Eigen::Vector3d water_velocity;
+//     water_velocity[0] = state.water_velocity[0];
+//     water_velocity[1] = state.water_velocity[1];
+//     water_velocity[2] = 0; // start with the assumption of zero water current velocity in the Z
 
-    Eigen::Vector3d velocity_body = state.orientation.inverse() * (state.velocity) - rotation_rate_body.cross(imu_in_body);
-    velocity_body = velocity_body - state.orientation.inverse() * water_velocity;
-    Eigen::Matrix<TranslationType::scalar, 6, 1> velocity_6d;
-    velocity_6d << velocity_body, rotation_rate_body;
+//     Eigen::Vector3d velocity_body = state.orientation.inverse() * (state.velocity) - rotation_rate_body.cross(imu_in_body);
+//     velocity_body = velocity_body - state.orientation.inverse() * water_velocity;
+//     Eigen::Matrix<TranslationType::scalar, 6, 1> velocity_6d;
+//     velocity_6d << velocity_body, rotation_rate_body;
 
-    // assume center of rotation to be the body frame
-    Eigen::Vector3d acceleration_body = state.orientation.inverse() * state.acceleration - rotation_rate_body.cross(rotation_rate_body.cross(imu_in_body));
-    Eigen::Matrix<TranslationType::scalar, 6, 1> acceleration_6d;
-    // assume the angular acceleration to be zero
-    acceleration_6d << acceleration_body, Eigen::Vector3d::Zero();
+//     // assume center of rotation to be the body frame
+//     Eigen::Vector3d acceleration_body = state.orientation.inverse() * state.acceleration - rotation_rate_body.cross(rotation_rate_body.cross(imu_in_body));
+//     Eigen::Matrix<TranslationType::scalar, 6, 1> acceleration_6d;
+//     // assume the angular acceleration to be zero
+//     acceleration_6d << acceleration_body, Eigen::Vector3d::Zero();
 
-    Eigen::Matrix<TranslationType::scalar, 6, 1> efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, state.orientation);
+//     Eigen::Matrix<TranslationType::scalar, 6, 1> efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, state.orientation);
 
-    // returns the expected forces and torques given the current state
-    return efforts;
-}
+//     // returns the expected forces and torques given the current state
+//     return efforts;
+// }
 
 /* This measurement model allows to constrain the velocity based on the motion model in the absence of effort measurements */
-template <typename FilterState>
-Eigen::Matrix<TranslationType::scalar, 6, 1>
-constrainVelocity(const FilterState &state, boost::shared_ptr<uwv_dynamic_model::DynamicModel> dynamic_model,
-                  const Eigen::Vector3d &imu_in_body, const Eigen::Vector3d &rotation_rate_body,
-                  const Eigen::Vector3d &water_velocity, const Eigen::Quaterniond &orientation,
-                  const Eigen::Vector3d &acceleration_body)
-{
-    Eigen::Vector3d velocity_body = orientation.inverse() * (state.velocity) - rotation_rate_body.cross(imu_in_body);
-    velocity_body -= orientation.inverse() * water_velocity;
-    Eigen::Matrix<TranslationType::scalar, 6, 1> velocity_6d;
-    velocity_6d << velocity_body, rotation_rate_body;
+// template <typename FilterState>
+// Eigen::Matrix<TranslationType::scalar, 6, 1>
+// constrainVelocity(const FilterState &state, boost::shared_ptr<auv_model::MotionModelBase> dynamic_model,
+//                   const Eigen::Vector3d &imu_in_body, const Eigen::Vector3d &rotation_rate_body,
+//                   const Eigen::Vector3d &water_velocity, const Eigen::Quaterniond &orientation,
+//                   const Eigen::Vector3d &acceleration_body)
+// {
+//     Eigen::Vector3d velocity_body = orientation.inverse() * (state.velocity) - rotation_rate_body.cross(imu_in_body);
+//     velocity_body -= orientation.inverse() * water_velocity;
+//     Eigen::Matrix<TranslationType::scalar, 6, 1> velocity_6d;
+//     velocity_6d << velocity_body, rotation_rate_body;
 
-    Eigen::Matrix<TranslationType::scalar, 6, 1> acceleration_6d;
-    // assume the angular acceleration to be zero
-    acceleration_6d << acceleration_body, base::Vector3d::Zero();
+//     Eigen::Matrix<TranslationType::scalar, 6, 1> acceleration_6d;
+//     // assume the angular acceleration to be zero
+//     acceleration_6d << acceleration_body, base::Vector3d::Zero();
 
-    Eigen::Matrix<TranslationType::scalar, 6, 1> efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, orientation);
+//     Eigen::Matrix<TranslationType::scalar, 6, 1> efforts = dynamic_model->calcEfforts(acceleration_6d, velocity_6d, orientation);
 
-    // returns the expected forces and torques given the current state
-    return efforts;
-}
+//     // returns the expected forces and torques given the current state
+//     return efforts;
+// }
 
 /**
  * Augments the pose filter state with a marker pose.
@@ -287,7 +283,7 @@ static bool d2p95(const scalar_type &mahalanobis2)
 
 PoseUKF::PoseUKF(const Eigen::Vector3d &imu_in_nwu_pos, const Eigen::Matrix3d &imu_in_nwu_pos_cov,
                  const Eigen::Quaterniond &imu_in_nwu_rot, const Eigen::Matrix3d &imu_in_nwu_rot_cov,
-                 const PoseUKFConfig &filter_config, const uwv_dynamic_model::UWVParameters &model_parameters,
+                 const PoseUKFConfig &filter_config, const auv_model::Parameters &model_parameters,
                  const Eigen::Affine3d &imu_in_body) : filter_ts(0)
 {
     State initial_state;
@@ -350,8 +346,8 @@ PoseUKF::PoseUKF(const Eigen::Vector3d &imu_in_nwu_pos, const Eigen::Matrix3d &i
 
     rotation_rate = RotationRate::Mu::Zero();
 
-    dynamic_model.reset(new uwv_dynamic_model::DynamicModel());
-    dynamic_model->setUWVParameters(model_parameters);
+    dynamic_model.reset(new auv_model::MotionModelBase());
+    dynamic_model->setParams(model_parameters);
 
     projection.reset(new pose_estimation::GeographicProjection(filter_config.location.latitude, filter_config.location.longitude));
 
@@ -372,15 +368,15 @@ PoseUKF::PoseUKF(const Eigen::Vector3d &imu_in_nwu_pos, const Eigen::Matrix3d &i
 }
 
 PoseUKF::PoseUKF(const State &initial_state, const Covariance &state_cov,
-                 const LocationConfiguration &location, const uwv_dynamic_model::UWVParameters &model_parameters,
+                 const LocationConfiguration &location, const auv_model::Parameters &model_parameters,
                  const PoseUKFParameter &filter_parameter) : filter_parameter(filter_parameter), filter_ts(0)
 {
     initializeFilter(initial_state, state_cov);
 
     rotation_rate = RotationRate::Mu::Zero();
 
-    dynamic_model.reset(new uwv_dynamic_model::DynamicModel());
-    dynamic_model->setUWVParameters(model_parameters);
+    dynamic_model.reset(new auv_model::MotionModelBase());
+    dynamic_model->setParams(model_parameters);
 
     inertia_offset = Eigen::Map<const InertiaType::vectorized_type>(initial_state.inertia.data());
     lin_damping_offset = Eigen::Map<const LinDampingType::vectorized_type>(initial_state.lin_damping.data());
@@ -558,28 +554,28 @@ void PoseUKF::integrateMeasurement(const GeographicPosition &geo_position, const
                 d2p95<State::scalar>);
 }
 
-void PoseUKF::integrateMeasurement(const BodyEffortsMeasurement &body_efforts, bool only_affect_velocity)
-{
-    checkMeasurment(body_efforts.mu, body_efforts.cov);
+// void PoseUKF::integrateMeasurement(const BodyEffortsMeasurement &body_efforts, bool only_affect_velocity)
+// {
+//     checkMeasurment(body_efforts.mu, body_efforts.cov);
 
-    if (only_affect_velocity)
-    {
-        // this allows to contstrain only the velocity using the motion model
-        Eigen::Vector3d water_velocity(ukf->mu().water_velocity.x(), ukf->mu().water_velocity.y(), 0.);
-        Eigen::Vector3d rotation_rate_body = getRotationRate();
-        // assume center of rotation to be the body frame
-        Eigen::Vector3d acceleration_body = ukf->mu().orientation.inverse() * ukf->mu().acceleration - rotation_rate_body.cross(rotation_rate_body.cross(filter_parameter.imu_in_body));
-        ukf->update(body_efforts.mu, boost::bind(constrainVelocity<State>, _1, dynamic_model, filter_parameter.imu_in_body, rotation_rate_body, water_velocity, ukf->mu().orientation, acceleration_body),
-                    boost::bind(ukfom::id<BodyEffortsMeasurement::Cov>, body_efforts.cov),
-                    ukfom::accept_any_mahalanobis_distance<State::scalar>);
-    }
-    else
-    {
-        ukf->update(body_efforts.mu, boost::bind(measurementEfforts<State>, _1, dynamic_model, filter_parameter.imu_in_body, getRotationRate()),
-                    boost::bind(ukfom::id<BodyEffortsMeasurement::Cov>, body_efforts.cov),
-                    ukfom::accept_any_mahalanobis_distance<State::scalar>);
-    }
-}
+//     if (only_affect_velocity)
+//     {
+//         // this allows to contstrain only the velocity using the motion model
+//         Eigen::Vector3d water_velocity(ukf->mu().water_velocity.x(), ukf->mu().water_velocity.y(), 0.);
+//         Eigen::Vector3d rotation_rate_body = getRotationRate();
+//         // assume center of rotation to be the body frame
+//         Eigen::Vector3d acceleration_body = ukf->mu().orientation.inverse() * ukf->mu().acceleration - rotation_rate_body.cross(rotation_rate_body.cross(filter_parameter.imu_in_body));
+//         ukf->update(body_efforts.mu, boost::bind(constrainVelocity<State>, _1, dynamic_model, filter_parameter.imu_in_body, rotation_rate_body, water_velocity, ukf->mu().orientation, acceleration_body),
+//                     boost::bind(ukfom::id<BodyEffortsMeasurement::Cov>, body_efforts.cov),
+//                     ukfom::accept_any_mahalanobis_distance<State::scalar>);
+//     }
+//     else
+//     {
+//         ukf->update(body_efforts.mu, boost::bind(measurementEfforts<State>, _1, dynamic_model, filter_parameter.imu_in_body, getRotationRate()),
+//                     boost::bind(ukfom::id<BodyEffortsMeasurement::Cov>, body_efforts.cov),
+//                     ukfom::accept_any_mahalanobis_distance<State::scalar>);
+//     }
+// }
 
 void PoseUKF::integrateMeasurement(const WaterVelocityMeasurement &adcp_measurements, double cell_weighting)
 {

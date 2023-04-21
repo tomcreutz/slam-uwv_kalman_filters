@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>uwv_kalman_filters</name>
+  <version>0.1.0</version>
+  <description>UWV Kalman Filters</description>
+  <maintainer email="tom.creutz@dfki.de">Tom Creutz</maintainer>
+  <author>Sascha Arnold</author>
+  <license>BSD 3-Clause</license>
+
+  <buildtool_depend>cmake</buildtool_depend>
+
+  <depend>eigen3</depend>
+  <depend>mtk</depend>
+  <depend>pose_estimation</depend>
+  <!-- <depend>auv_motion_model</depend> -->
+
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>
