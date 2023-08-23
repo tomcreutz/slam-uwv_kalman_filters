@@ -198,7 +198,7 @@ class SimplePoseUKF
   // bool integrateDelayedMeasurement(const XY_Position &xy_position, double
   // delay);
 
-  void resetFilterWithExternalPose(const Eigen::Affine3d &imu_in_nav);
+  void resetFilterWithExternalPose(const Eigen::Affine3d &imu_in_nwu);
 
   /* Returns rotation rate in IMU frame */
   RotationRate::Mu getRotationRate();

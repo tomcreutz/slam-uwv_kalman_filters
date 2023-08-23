@@ -11,7 +11,6 @@ find_package(ament_index_cpp REQUIRED)
 set(uwv_kalman_filters_EXTRA_LIBRARIES
   $<BUILD_INTERFACE:ament_index_cpp::ament_index_cpp>
   Eigen3::Eigen
-  pose_estimation::pose_estimation
   mtk::mtk
 )
 
@@ -29,6 +28,7 @@ mark_as_advanced(
 
 macro(export_uwv_kalman_filters_package)
   ament_export_include_directories(include)
+  ament_target_dependencies(${uwv_kalman_filters_LIBRARY} pose_estimation)
   ament_export_libraries(${uwv_kalman_filters_LIBRARY})
   ament_package()
 endmacro()

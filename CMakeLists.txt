@@ -66,7 +66,6 @@ add_library(${uwv_kalman_filters_LIBRARY} SHARED
 )
 
 target_link_libraries(${uwv_kalman_filters_LIBRARY}
-  PRIVATE
   ${CMAKE_DL_LIBS}
   ${uwv_kalman_filters_EXTRA_LIBRARIES}
 )
