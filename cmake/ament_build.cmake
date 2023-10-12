@@ -15,6 +15,10 @@ set(uwv_kalman_filters_EXTRA_LIBRARIES
   mtk::mtk
 )
 
+set(uwv_kalman_filters_EXTRA_INCLUDE_DIRS
+  ${pose_estimation_INCLUDE_DIRS}
+)
+
 ament_export_dependencies(ament_index_cpp)
 
 set(uwv_kalman_filters_LIB_DESTINATION lib)
