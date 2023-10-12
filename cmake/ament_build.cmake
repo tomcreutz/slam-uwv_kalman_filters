@@ -10,7 +10,7 @@ find_package(ament_index_cpp REQUIRED)
 
 set(uwv_kalman_filters_EXTRA_LIBRARIES
   $<BUILD_INTERFACE:ament_index_cpp::ament_index_cpp>
-  pose_estimation::pose_estimation
+  pose_estimation
   Eigen3::Eigen
   mtk::mtk
 )
