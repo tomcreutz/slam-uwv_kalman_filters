@@ -28,8 +28,8 @@ MTK_BUILD_MANIFOLD(
     ((AccelerationType, acceleration)) // acceleration of IMU in navigation frame
     ((BiasType, bias_gyro)) // gyroscope bias states
     ((BiasType, bias_acc))  // acceleration bias states
-    ((GravityType, gravity)) // local gravity, to refine the WGS-84 ellipsoid earth gravity model
-    ((DensityType, water_density)) // water density in kg/m³
+//    ((GravityType, gravity)) // local gravity, to refine the WGS-84 ellipsoid earth gravity model
+//    ((DensityType, water_density)) // water density in kg/m³
 )
 
 }  // namespace uwv_kalman_filters
