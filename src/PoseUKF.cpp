@@ -13,13 +13,10 @@ using namespace uwv_kalman_filters;
 // process model
 template<typename FilterState>
 FilterState processModel(
-  const FilterState & state, const Eigen::Vector3d & rotation_rate,
+  const FilterState & state, const PoseUKF::RotationRate::Mu & rotation_rate,
+  const PoseUKF::Acceleration::Mu & acceleration,
   std::shared_ptr<pose_estimation::GeographicProjection> projection,
-  const double & gyro_bias_tau,
-  const Eigen::Vector3d & gyro_bias_offset,
-  const double & acc_bias_tau,
-  const Eigen::Vector3d & acc_bias_offset,
-  double delta_time)
+  const double & gravity, const PoseUKFConfig & config, const double & delta_time)
 {
   FilterState new_state(state);
 
@@ -40,16 +37,22 @@ FilterState processModel(
   new_state.orientation.boxplus(angular_velocity, delta_time);
 
   // apply acceleration
-  new_state.velocity.boxplus(state.acceleration, delta_time);
+  Eigen::Vector3d acc = state.orientation * (acceleration - state.bias_acc) - Eigen::Vector3d(
+    0, 0,
+    gravity);
+
+  new_state.velocity.boxplus(
+    acc,
+    delta_time);
 
   Eigen::Vector3d gyro_bias_delta =
-    (-1.0 / gyro_bias_tau) *
-    (Eigen::Vector3d(state.bias_gyro) - gyro_bias_offset);
+    (-1.0 / config.rotation_rate.bias_tau) *
+    (Eigen::Vector3d(state.bias_gyro) - config.rotation_rate.bias_offset);
   new_state.bias_gyro.boxplus(gyro_bias_delta, delta_time);
 
   Eigen::Vector3d acc_bias_delta =
-    (-1.0 / acc_bias_tau) *
-    (Eigen::Vector3d(state.bias_acc) - acc_bias_offset);
+    (-1.0 / config.acceleration.bias_tau) *
+    (Eigen::Vector3d(state.bias_acc) - config.acceleration.bias_offset);
   new_state.bias_acc.boxplus(acc_bias_delta, delta_time);
 
   return new_state;
@@ -73,23 +76,18 @@ PoseUKF::PoseUKF(
   initial_state.position = TranslationType(imu_in_nwu_pos);
   initial_state.orientation = RotationType(imu_in_nwu_rot);
   initial_state.velocity = VelocityType(Eigen::Vector3d::Zero());
-  initial_state.acceleration = AccelerationType(Eigen::Vector3d::Zero());
   initial_state.bias_gyro = BiasType(
     config_.imu_in_body.rotation() *
     config_.rotation_rate.bias_offset);
   initial_state.bias_acc =
     BiasType(config_.imu_in_body.rotation() * config_.acceleration.bias_offset);
-  gravity_ = Eigen::Vector3d::Zero();
-  gravity_(2) = pose_estimation::GravitationalModel::WGS_84(
+  gravity_ = pose_estimation::GravitationalModel::WGS_84(
     config_.location.latitude, config_.location.altitude);
-
   Covariance initial_state_cov = Covariance::Zero();
   MTK::subblock(initial_state_cov, &State::position) = imu_in_nwu_pos_cov;
   MTK::subblock(initial_state_cov, &State::orientation) = imu_in_nwu_rot_cov;
   MTK::subblock(initial_state_cov, &State::velocity) =
     Eigen::Matrix3d::Identity();    // velocity is unknown at the start
-  MTK::subblock(initial_state_cov, &State::acceleration) =
-    10 * Eigen::Matrix3d::Identity();    // acceleration is unknown at the start
   MTK::subblock(initial_state_cov, &State::bias_gyro) =
     config_.imu_in_body.rotation() *
     config_.rotation_rate.bias_instability.cwiseAbs2().asDiagonal() *
@@ -98,6 +96,7 @@ PoseUKF::PoseUKF(
     config_.imu_in_body.rotation() *
     config_.acceleration.bias_instability.cwiseAbs2().asDiagonal() *
     config_.imu_in_body.rotation().transpose();
+
 
   initializeFilter(initial_state, initial_state_cov);
 
@@ -145,7 +144,8 @@ void PoseUKF::integrateMeasurement(
     pressure.mu,
     boost::bind(
       measurementPressureSensor<State>, _1, config_.pressure_in_imu.translation(),
-      config_.hydrostatics.atmospheric_pressure, config_.hydrostatics.water_density, gravity_(2)),
+      config_.hydrostatics.water_density,
+      config_.hydrostatics.atmospheric_pressure, gravity_),
     boost::bind(ukfom::id<Pressure::Cov>, pressure.cov),
     ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }
@@ -154,7 +154,8 @@ void PoseUKF::integrateMeasurement(const Velocity & velocity)
 {
   checkMeasurment(velocity.mu, velocity.cov);
   ukf->update(
-    velocity.mu, boost::bind(measurementVelocity<State>, _1),
+    velocity.mu,
+    boost::bind(measurementVelocity<State>, _1, config_.dvl_in_imu.inverse(), rotation_rate_),
     boost::bind(ukfom::id<Velocity::Cov>, velocity.cov),
     ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }
@@ -162,10 +163,11 @@ void PoseUKF::integrateMeasurement(const Velocity & velocity)
 void PoseUKF::integrateMeasurement(const Acceleration & acceleration)
 {
   checkMeasurment(acceleration.mu, acceleration.cov);
-  ukf->update(
-    acceleration.mu, boost::bind(measurementAcceleration<State>, _1, gravity_),
-    boost::bind(ukfom::id<Acceleration::Cov>, acceleration.cov),
-    ukfom::accept_any_mahalanobis_distance<State::scalar>);
+  this->acceleration_ = acceleration.mu;
+  // ukf->update(
+  //   acceleration.mu, boost::bind(measurementAcceleration<State>, _1),
+  //   boost::bind(ukfom::id<Acceleration::Cov>, acceleration.cov),
+  //   ukfom::accept_any_mahalanobis_distance<State::scalar>);
 }
 
 void PoseUKF::integrateMeasurement(const RotationRate & rotation_rate)
@@ -188,12 +190,10 @@ void PoseUKF::predictionStepImpl(double delta_t)
     10 * scaled_velocity[2];    // scale Z velocity to have 10x more impact
 
   process_noise = pow(delta_t, 2.) * process_noise;
-
   ukf->predict(
     boost::bind(
-      processModel<WState>, _1, rotation_rate_, projection_,
-      config_.rotation_rate.bias_tau, config_.rotation_rate.bias_offset,
-      config_.acceleration.bias_tau, config_.acceleration.bias_offset, delta_t),
+      processModel<WState>, _1, rotation_rate_, acceleration_, projection_, gravity_,
+      config_, delta_t),
     MTK_UKF::cov(process_noise));
 }
 
@@ -220,10 +220,6 @@ void PoseUKF::setProcessNoiseFromConfig(
     1.5 * (std::pow(imu_delta_t, 2.0) *
     (0.5 * 0.25 * filter_config.max_jerk).cwiseAbs2())
     .asDiagonal();
-
-  // Euler integration error acceleration: (1/4 * jerk_max * dt)^2
-  MTK::subblock(process_noise_cov, &State::acceleration) =
-    (0.25 * filter_config.max_jerk).cwiseAbs2().asDiagonal();
 
   MTK::subblock(process_noise_cov, &State::orientation) =
     imu_in_body_m *

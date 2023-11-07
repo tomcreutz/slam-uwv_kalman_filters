@@ -25,7 +25,7 @@ MTK_BUILD_MANIFOLD(
   ((TranslationType, position))    // position of IMU in navigation frame
     ((RotationType, orientation)) // orientation of IMU in navigation frame
     ((VelocityType, velocity))   // velocity of IMU in navigation frame
-    ((AccelerationType, acceleration)) // acceleration of IMU in navigation frame
+//    ((AccelerationType, acceleration)) // acceleration of IMU in navigation frame
     ((BiasType, bias_gyro)) // gyroscope bias states
     ((BiasType, bias_acc))  // acceleration bias states
 //    ((GravityType, gravity)) // local gravity, to refine the WGS-84 ellipsoid earth gravity model

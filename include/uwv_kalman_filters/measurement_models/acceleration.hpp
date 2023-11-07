@@ -10,12 +10,13 @@ namespace uwv_kalman_filters
 
 template<typename FilterState>
 AccelerationType
-measurementAcceleration(const FilterState & state, const Eigen::Vector3d & gravity)
+measurementAcceleration(const FilterState & state)
 {
   // returns expected accelerations in the IMU frame
   return AccelerationType(
-    state.orientation.inverse() *
-    (Eigen::Vector3d(state.acceleration) + gravity + Eigen::Vector3d(state.bias_acc)));
+    state.orientation *
+    (Eigen::Vector3d(state.acceleration) - Eigen::Vector3d(state.bias_acc)) -
+    Eigen::Vector3d(0., 0., state.gravity(0)));
 }
 
 } // namespace uwv_kalman_filters

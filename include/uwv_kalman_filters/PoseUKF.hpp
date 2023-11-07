@@ -107,9 +107,10 @@ protected:
   std::shared_ptr<pose_estimation::GeographicProjection> projection_;
   PoseUKFConfig config_;
   RotationRate::Mu rotation_rate_;
+  Acceleration::Mu acceleration_;
 
   double water_density_offset_;
-  Eigen::Vector3d gravity_;
+  double gravity_;
 
   /* nanoseconds since the initialization of the filter */
   std::chrono::nanoseconds filter_ts_;
